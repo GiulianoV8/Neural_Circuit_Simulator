@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuralCircuit Builder</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400&display=swap"
+        rel="stylesheet">
+    <!-- p5.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <!-- Styles -->
+    <link rel="stylesheet" href="style.css?v=6">
+</head>
+
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <!-- Center Top Toolbar -->
+        <div class="toolbar">
+            <button class="btn active" id="mode-move" onclick="setMode('move')">Move/Select</button>
+            <button class="btn" id="mode-neuron" onclick="setMode('neuron')">Add Neuron</button>
+            <button class="btn" id="mode-synapse" onclick="setMode('synapse')">Add Synapse</button>
+            <button class="btn" id="mode-stimulator" onclick="setMode('stimulator')">Add Generator</button>
+            <button class="btn" id="mode-button" onclick="setMode('button')">Add Button</button>
+            <button class="btn" id="mode-output" onclick="setMode('output')">Add Output</button>
+            <button class="btn" id="mode-probe" onclick="setMode('probe')">Add Probe</button>
+            <div class="gate-dropdown" id="gate-dropdown">
+                <button class="btn" id="mode-gate" onclick="this.parentElement.classList.toggle('open')">Logic Gates
+                    ▾</button>
+                <div class="gate-dropdown-menu">
+                    <button class="btn btn-sm-flex"
+                        onclick="setGateType('and'); this.closest('.gate-dropdown').classList.remove('open')">AND
+                        Gate</button>
+                    <button class="btn btn-sm-flex"
+                        onclick="setGateType('or'); this.closest('.gate-dropdown').classList.remove('open')">OR
+                        Gate</button>
+                    <button class="btn btn-sm-flex"
+                        onclick="setGateType('not'); this.closest('.gate-dropdown').classList.remove('open')">NOT
+                        Gate</button>
+                </div>
+            </div>
+            <button class="btn" id="mode-note" onclick="setMode('note')">Add Note</button>
+            <div class="divider-vertical"></div>
+            <button class="btn" id="btn-play" onclick="togglePlay()">Pause</button>
+            <button class="btn" onclick="resetSim()">Reset</button>
+        </div>
+
+        <!-- Right Sidebar for Properties -->
+        <div class="sidebar" id="properties-panel">
+            <div class="panel-header">Properties</div>
+            <div id="no-selection" class="no-selection-msg">
+                Select a neuron or click "Add Neuron" to create one.
+            </div>
+
+            <!-- Stimulator Controls -->
+            <div id="stimulator-controls" class="hidden">
+                <div class="control-group">
+                    <label for="inp-stim-type">Type</label>
+                    <select id="inp-stim-type" onchange="updateStimulatorParam('type', this.value)"
+                        class="input-select">
+                        <option value="constant">Constant</option>
+                        <option value="sine">Sine Wave</option>
+                        <option value="pulse">Pulse</option>
+                        <option value="square">Square</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="inp-stim-amp">Amplitude <span class="value-display" id="val-stim-amp">1.0</span></label>
+                    <input type="range" min="0" max="5" step="0.1" id="inp-stim-amp"
+                        oninput="updateStimulatorParam('amplitude', this.value)">
+                </div>
+                <div class="control-group">
+                    <label for="inp-stim-freq">Frequency (Hz) <span class="value-display"
+                            id="val-stim-freq">0.05</span></label>
+                    <input type="range" min="0.01" max="1.0" step="0.01" id="inp-stim-freq"
+                        oninput="updateStimulatorParam('frequency', this.value)">
+                </div>
+                <div class="control-group">
+                    <label for="inp-stim-offset">Offset <span class="value-display"
+                            id="val-stim-offset">0.0</span></label>
+                    <input type="range" min="-2" max="2" step="0.1" id="inp-stim-offset"
+                        oninput="updateStimulatorParam('offset', this.value)">
+                </div>
+                <div class="control-group">
+                    <label for="inp-stim-phase">Phase <span class="value-display" id="val-stim-phase">0.0</span></label>
+                    <input type="range" min="0" max="6.28" step="0.1" id="inp-stim-phase"
+                        oninput="updateStimulatorParam('phase', this.value)">
+                </div>
+                <div class="actions-row">
+                    <button class="btn btn-danger" onclick="deleteSelected()">Delete Generator</button>
+                </div>
+            </div>
+
+            <!-- Output Controls -->
+            <div id="output-controls" class="hidden">
+                <div class="control-group">
+                    <label for="inp-out-label">Label</label>
+                    <input type="text" id="inp-out-label" class="input-text"
+                        oninput="updateOutputParam('label', this.value)" placeholder="Output label"
+                        title="Output label text">
+                </div>
+                <div class="control-group">
+                    <label for="inp-out-thresh">Activation Threshold <span class="value-display"
+                            id="val-out-thresh">0.50</span></label>
+                    <input type="range" min="0" max="5" step="0.05" id="inp-out-thresh"
+                        oninput="updateOutputParam('activationThreshold', this.value)">
+                    <div class="text-subtle">Input level required to activate the display</div>
+                </div>
+                <div class="actions-row">
+                    <button class="btn btn-danger" onclick="deleteSelected()">Delete Output</button>
+                </div>
+            </div>
+
+            <!-- Probe Controls -->
+            <div id="probe-controls" class="hidden">
+                <div class="control-group">
+                    <div class="text-subtle">Oscilloscope probe attached to neuron. Drag to reposition.</div>
+                </div>
+                <div class="actions-row">
+                    <button class="btn btn-danger" onclick="deleteSelected()">Delete Probe</button>
+                </div>
+            </div>
+
+            <!-- Button Controls -->
+            <div id="button-controls" class="hidden">
+                <div class="control-group">
+                    <label for="inp-btn-voltage">Voltage <span class="value-display"
+                            id="val-btn-voltage">1.50</span></label>
+                    <input type="range" min="0.1" max="5.0" step="0.1" id="inp-btn-voltage"
+                        oninput="updateButtonParam('voltage', this.value)">
+                    <div class="text-subtle">Voltage sent when button is pressed</div>
+                </div>
+                <div class="control-group">
+                    <label for="inp-btn-duration">Pulse Duration <span class="value-display"
+                            id="val-btn-duration">10</span> frames</label>
+                    <input type="range" min="1" max="60" step="1" id="inp-btn-duration"
+                        oninput="updateButtonParam('pulseDuration', this.value)">
+                    <div class="text-subtle">How long the pulse lasts after pressing</div>
+                </div>
+                <div class="actions-row">
+                    <button class="btn" onclick="if(selectedElement instanceof ManualButton) selectedElement.press()">⚡
+                        Fire</button>
+                    <button class="btn btn-danger" onclick="deleteSelected()">Delete Button</button>
+                </div>
+            </div>
+
+            <!-- Neuron Controls -->
+            <div id="neuron-controls" class="hidden">
+                <div class="control-group">
+                    <label for="inp-thresh">Voltage Threshold <span class="value-display"
+                            id="val-thresh">1.0</span></label>
+                    <input type="range" min="0.5" max="2.0" step="0.1" id="inp-thresh"
+                        oninput="updateNeuronParam('thresh', this.value)">
+                    <div class="text-subtle">Level at which the neuron spikes
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="inp-tau">Time Constant (tau) <span class="value-display"
+                            id="val-tau">20ms</span></label>
+                    <input type="range" min="5" max="100" step="1" id="inp-tau"
+                        oninput="updateNeuronParam('tau', this.value)">
+                    <div class="text-subtle">How quickly voltage decays to rest
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="inp-bias">Bias Current <span class="value-display" id="val-bias">0.0</span></label>
+                    <input type="range" min="-0.5" max="2.0" step="0.05" id="inp-bias"
+                        oninput="updateNeuronParam('bias', this.value)">
+                    <div class="text-subtle">Constant input current injection
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label for="inp-refractory">Refractory Period <span class="value-display"
+                            id="val-refractory">1</span>ms</label>
+                    <input type="range" min="0" max="30" step="1" id="inp-refractory"
+                        oninput="updateNeuronParam('refractoryPeriod', this.value)">
+                    <div class="text-subtle">Dead time after spike where neuron cannot fire
+                    </div>
+                </div>
+                <div class="actions-row">
+                    <button class="btn btn-danger" onclick="deleteSelected()">Delete Neuron</button>
+                </div>
+
+                <div class="divider-horizontal">
+                    <div class="text-muted">Live Voltage (mV)</div>
+                    <div id="oscilloscope"></div>
+                </div>
+            </div>
+
+            <!-- Synapse Controls -->
+            <div id="synapse-controls" class="hidden">
+                <div class="control-group">
+                    <label for="inp-weight">Weight <span class="value-display" id="val-weight">0.5</span></label>
+                    <input type="range" min="-1" max="1" step="0.1" id="inp-weight"
+                        oninput="updateSynapseParam('weight', this.value)">
+                    <div class="text-subtle">Positive = Excitatory, Negative =
+                        Inhibitory</div>
+                </div>
+                <div id="synapse-neurotransmitter-controls">
+                    <!-- Receptor Controls -->
+                    <div class="control-group">
+                        <label for="inp-decay">Reuptake Rate <span class="value-display"
+                                id="val-decay">0.1</span></label>
+                        <input type="range" min="0.01" max="0.5" step="0.01" id="inp-decay"
+                            oninput="updateSynapseParam('decay', this.value)">
+                        <div class="text-subtle">Rate of neurotransmitter clearance
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label for="inp-sensitivity">Receptor Sensitivity <span class="value-display"
+                                id="val-sensitivity">1.0</span></label>
+                        <input type="range" min="0.1" max="5.0" step="0.1" id="inp-sensitivity"
+                            oninput="updateSynapseParam('sensitivity', this.value)">
+                        <div class="text-subtle">Magnitude of response to binding
+                        </div>
+                    </div>
+                    <div class="actions-row">
+                        <button class="btn btn-danger" onclick="deleteSelected()">Remove Connection</button>
+                    </div>
+
+                    <!-- Plasticity Controls -->
+                    <div class="divider-horizontal">
+                        <div class="text-muted">Plasticity / Learning</div>
+                        <div class="control-group">
+                            <label for="inp-plasticity-mode">Mode</label>
+                            <select id="inp-plasticity-mode" onchange="updateSynapseParam('plasticityMode', this.value)"
+                                class="input-select">
+                                <option value="off">Off (Fixed Weight)</option>
+                                <option value="stdp">STDP (Spike Timing)</option>
+                                <option value="bcm">BCM (Rate Based)</option>
+                            </select>
+                        </div>
+
+                        <div id="plasticity-params" class="hidden">
+                            <div class="control-group">
+                                <label for="inp-lr">Learning Rate <span class="value-display"
+                                        id="val-lr">1.0</span></label>
+                                <input type="range" min="0.1" max="5.0" step="0.1" id="inp-lr"
+                                    oninput="updateSynapseParam('baseLearningRate', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="divider-horizontal-large">
+                <div class="panel-header text-sm">Global Settings</div>
+                <div class="actions-row">
+                    <button class="btn btn-sm-flex" onclick="saveCircuit()">Save JSON</button>
+                    <button class="btn btn-sm-flex" onclick="document.getElementById('file-input').click()">Load
+                        JSON</button>
+                    <input type="file" id="file-input" class="hidden" onchange="loadCircuit(this)"
+                        title="Load Circuit File" aria-label="Load Circuit File">
+                </div>
+                <div class="actions-row mt-5">
+                    <button class="btn btn-sm-flex" onclick="clearAll()">Clear All</button>
+                </div>
+                <div class="control-group control-group-spaced">
+                    <label for="inp-speed">Simulation Speed</label>
+                    <input type="range" min="1" max="10" step="1" id="inp-speed" value="1"
+                        oninput="simSpeed = parseInt(this.value)">
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Left Tooltip -->
+        <div class="status-bar">
+            <div class="tooltip">
+                <h4>LIF Model Physics</h4>
+                <div class="mb-5">
+                    d/dt V = (I_input - V) / τ
+                </div>
+                <div class="text-sm-muted">
+                    Neurons integrate input over time. When Voltage > Threshold, they SPIKE and reset. <br>
+                </div>
+                <div class="text-subtle mt-10">
+                    Presets:
+                    <a href="#" class="link-accent" onclick="loadPreset('chain')">Chain</a> |
+                    <a href="#" class="link-accent" onclick="loadPreset('oscillator')">Oscillator</a> |
+                    <a href="#" class="link-accent" onclick="loadPreset('attractor')">Attractor</a> |
+                    <a href="#" class="link-accent" onclick="loadPreset('balanced')">Balanced Net</a> |
+                    <a href="#" class="link-accent" onclick="loadPreset('retina')">Retina</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Textarea for Editing Notes -->
+    <textarea id="note-editor" spellcheck="false" aria-label="Note Editor" placeholder="Enter note..."></textarea>
+
+    <!-- App Logic -->
+    <script src="app.js?v=20"></script>
+</body>
+
+</html>
