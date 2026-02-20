@@ -1,6 +1,6 @@
 # Neural Circuit Simulator
 
-A real-time, interactive neural network simulator built with [p5.js](https://p5js.org/). Drag-and-drop neurons, wire them together with synapses, and watch electrical signals propagate through your circuit in real time.
+A real-time, interactive neural network simulator. Drag-and-drop neurons, wire them together with synapses, and watch electrical signals propagate through your circuit in real time. Contributions are welcome, I would like to make this an online public project that we can build to make the biggest and most comprehensive simulator ever.
 
 ![Built with p5.js](https://img.shields.io/badge/Built_with-p5.js-ED225D?style=flat-square)
 ![Vanilla JS](https://img.shields.io/badge/Vanilla-JavaScript-F7DF1E?style=flat-square)
