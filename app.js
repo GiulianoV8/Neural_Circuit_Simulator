@@ -307,11 +307,9 @@ class Stimulator {
     }
 
     update() {
-        // time scale: let's say 60 frames = 1 second
+        // time scale: 60 frames = 1 second
         // t = simTime / 60
         let t = simTime;
-        // frequency usually in Hz (cycles per second). 
-        // So argument to sin should be (t / 60) * freq * 2PI
         let timeSec = t / 60;
 
         if (this.type === 'constant') {
@@ -323,7 +321,6 @@ class Stimulator {
             this.currentOutput = this.offset + (val >= 0 ? this.amplitude : -this.amplitude);
         } else if (this.type === 'pulse') {
             // Pulse: High for small fraction of period
-            // Let's us duty cycle 10%
             let phaseVal = (timeSec * this.frequency + this.phase / TWO_PI) % 1.0;
             if (phaseVal < 0.1) {
                 this.currentOutput = this.offset + this.amplitude;
@@ -606,10 +603,19 @@ class Note {
         this.x = x;
         this.y = y;
         this.text = text;
-        this.targets = targets;
+        // Store target IDs (accepts both objects with .id and raw IDs)
+        this.targetIds = targets.map(t => (typeof t === 'object' && t !== null) ? t.id : t);
         this.minimized = true;
         this.w = 12; // Icon radius
         this.isDragging = false;
+    }
+
+    // Resolve targetIds to actual element objects
+    getResolvedTargets() {
+        let allElements = [...neurons, ...stimulators, ...buttons, ...outputs, ...probes];
+        return this.targetIds
+            .map(id => allElements.find(el => el.id === id))
+            .filter(el => el !== undefined);
     }
 
     display() {
@@ -617,7 +623,7 @@ class Note {
         stroke(255, 255, 255, 50);
         strokeWeight(1);
         drawingContext.setLineDash([5, 5]); // Dashed
-        for (let t of this.targets) {
+        for (let t of this.getResolvedTargets()) {
             line(this.x, this.y, t.x, t.y);
         }
         drawingContext.setLineDash([]); // Reset
@@ -645,23 +651,40 @@ class Note {
 
         // Expanded Text Box
         if (!this.minimized) {
-            fill(30, 41, 59, 230); // Panel BG
-            stroke(148, 163, 184);
-            strokeWeight(1);
+            let boxW = 200;
+            let padding = 10;
+            let textW = boxW - padding * 2;
 
-            // Draw box above
-            let boxW = 150;
-            let boxH = 100;
+            // Measure text height dynamically
+            textSize(12);
+            textAlign(LEFT, TOP);
+            // Use a hidden draw to measure: p5 text() with width wraps, but
+            // we need the bounding box. We can approximate with textLeading and line count.
+            let leading = textLeading();
+            let words = this.text.split('');
+            let testLines = 1;
+            let lineW = 0;
+            for (let ch of words) {
+                if (ch === '\n') { testLines++; lineW = 0; continue; }
+                lineW += textWidth(ch);
+                if (lineW > textW) { testLines++; lineW = textWidth(ch); }
+            }
+            let textH = testLines * leading;
+            let boxH = textH + padding * 2;
+
             let boxX = this.x - boxW / 2;
             let boxY = this.y - boxH - 15;
 
+            fill(30, 41, 59, 230); // Panel BG
+            stroke(148, 163, 184);
+            strokeWeight(1);
             rect(boxX, boxY, boxW, boxH, 8);
 
             fill(255);
             noStroke();
             textSize(12);
             textAlign(LEFT, TOP);
-            text(this.text, boxX + 10, boxY + 10, boxW - 20, boxH - 20);
+            text(this.text, boxX + padding, boxY + padding, textW);
         }
     }
 
@@ -671,8 +694,25 @@ class Note {
 
     isMouseOverBox(mx, my) {
         if (this.minimized) return false;
-        let boxW = 150;
-        let boxH = 100;
+        let boxW = 200;
+        let padding = 10;
+        let textW = boxW - padding * 2;
+
+        // Same height calculation as display()
+        textSize(12);
+        textAlign(LEFT, TOP);
+        let leading = textLeading();
+        let chars = this.text.split('');
+        let testLines = 1;
+        let lineW = 0;
+        for (let ch of chars) {
+            if (ch === '\n') { testLines++; lineW = 0; continue; }
+            lineW += textWidth(ch);
+            if (lineW > textW) { testLines++; lineW = textWidth(ch); }
+        }
+        let textH = testLines * leading;
+        let boxH = textH + padding * 2;
+
         let boxX = this.x - boxW / 2;
         let boxY = this.y - boxH - 15;
         return mx > boxX && mx < boxX + boxW &&
@@ -699,7 +739,7 @@ class OscilloscopeProbe {
 
     update() {
         if (this.target) {
-            let val = this.target.voltage + (this.target.didSpike ? 1.0 : 0);
+            let val = this.target.voltage;
             this.history.push(val);
             if (this.history.length > 120) this.history.shift();
         }
@@ -759,17 +799,22 @@ class OscilloscopeProbe {
         strokeWeight(1.5);
         noFill();
         beginShape();
+
+        const V_MIN = -1.0;
+        const V_MAX = 1.0;
+        const V_RANGE = V_MAX - V_MIN;
         for (let i = 0; i < this.history.length; i++) {
             let x = traceX + (i / (this.history.length - 1)) * traceW;
-            let v = constrain(this.history[i], -0.5, 2.0);
-            let y = traceY + traceH - ((v + 0.5) / 2.5) * traceH;
+            let v = constrain(this.history[i], V_MIN, V_MAX);
+            let y = traceY + traceH - ((v - V_MIN) / V_RANGE) * traceH;
             vertex(x, y);
         }
         endShape();
 
         // Threshold line
         if (this.target) {
-            let threshY = traceY + traceH - ((this.target.thresh + 0.5) / 2.5) * traceH;
+            let vth = constrain(this.target.thresh, V_MIN, V_MAX);
+            let threshY = traceY + traceH - ((vth - V_MIN) / V_RANGE) * traceH;
             stroke(239, 68, 68, 100);
             strokeWeight(0.5);
             drawingContext.setLineDash([3, 2]);
@@ -793,10 +838,10 @@ class Neuron {
         this.r = 25; // radius
 
         // Physics Params
-        this.voltage = 0; // Voltage (0 is rest, 1.0 is thresh usually)
+        this.voltage = 0; // Voltage
         this.tau = 20; // Decay constant (ms)
-        this.thresh = 1.0;
-        this.bias = 0.0;
+        this.thresh = -.55;
+        this.bias = -0.7;
         this.refractoryPeriod = 1; // ms (frames) — biologically ~1ms
         this.refractoryTimer = 0;
 
@@ -810,6 +855,8 @@ class Neuron {
         // For Graph
         this.history = new Array(100).fill(0);
 
+        this.isDragging = false;
+
         // Plasticity State (BCM)
         this.avgFiringRate = 0; // Long-term average
         this.theta = 0; // Sliding threshold (avg^2)
@@ -819,22 +866,10 @@ class Neuron {
         // LIF Math: dV = (I - V) / tau * dt
         // Assuming dt = 1 for per-frame update normalization
 
-        // Euler integration
-        // LIF Math with Conductance: 
-        // dV/dt = (I_bias + I_syn - V) / tau
-        // I_syn is now handled via updateSimulation pushing current to currentInput?
-        // Actually, we want I_syn = g * (E_rev - V). 
-        // But since we sum inputs from multiple synapses, simpler to just treat conductance inputs separately?
-        // Let's assume 'currentInput' is still used for simple Bias/Noise, but Synapses add their own term.
-
-        // We need extended physics state for synapses attached to me.
-        // Optimization: Synapses push current to me? 
-        // Yes, let Synapse.update() calculate (g * (E_rev - V)) and add to currentInput.
-
         // Refractory period: block input and clamp voltage
         if (this.refractoryTimer > 0) {
             this.refractoryTimer--;
-            this.voltage = 0;
+            this.voltage = this.bias - .10;
             this.didSpike = false;
         } else {
             let I = this.bias + this.currentInput;
@@ -845,7 +880,7 @@ class Neuron {
 
             // Spike Logic
             if (this.voltage >= this.thresh) {
-                this.voltage = 0; // Reset
+                this.voltage = .40; // Reset
                 this.didSpike = true;
                 this.spikeTimer = 10; // Frames to show flash
                 this.refractoryTimer = this.refractoryPeriod;
@@ -855,9 +890,6 @@ class Neuron {
         }
 
         // BCM: Update Average Firing Rate
-        // Instantaneous rate is 1 if spiked, 0 if not (normalized by dt?)
-        // Let's use a very slow moving average.
-        // If spiked, input is 1.0 (or 1000/dt Hz?). Let's keep it unitless concept: Probability of spiking.
         let instRate = this.didSpike ? 1.0 : 0.0;
         let bcmTau = 1000; // Very slow integration (approx 16s at 60fps)
         this.avgFiringRate += (instRate - this.avgFiringRate) / bcmTau;
@@ -889,7 +921,7 @@ class Neuron {
             stroke(C_SPIKE);
         } else {
             // Resting Color (interpolate based on voltage)
-            let vNorm = constrain(this.voltage / this.thresh, 0, 1);
+            let vNorm = constrain((2 + this.voltage) / (2 + this.thresh), 0, 1); // Adding 2 ensures proper calc even if both are negative
             let c = color(30 + vNorm * 30, 41 + vNorm * 50, 59 + vNorm * 100);
             fill(c);
             stroke(C_NEURON_STROKE);
@@ -903,13 +935,13 @@ class Neuron {
 
         // Inner Circle (Membrane Potential)
         // Filling outwards
-        let vRatio = constrain(this.voltage / this.thresh, 0, 1);
+        let vRatio = constrain((2 + this.voltage) / (2 + this.thresh), 0, 1); // Adding 2 ensures proper calc even if both are negative
         if (vRatio > 0.01) {
             noStroke();
             fill(C_ACCENT);
             // Size from 0 to full radius (minus stroke padding)
             let fillR = (this.r * 2 - 4) * Math.sqrt(vRatio); // sqrt for area-relation feel, or linear for radius
-            // Let's go with linear radius for clearer indication
+            // Linear radius for clearer indication
             fillR = (this.r * 2 - 6) * vRatio;
             circle(this.x, this.y, fillR);
         }
@@ -933,9 +965,6 @@ class Synapse {
         this.sensitivity = 1.0; // Receptor Sensitivity
         this.particles = [];
 
-        // Reversal Potential based on weight sign (approx)
-        // We'll determine E_rev dynamically or set on weight change
-
         // Plasticity State
         this.plasticityMode = 'off'; // 'off', 'stdp', 'bcm'
         this.baseLearningRate = 1.0; // Scaler
@@ -946,21 +975,19 @@ class Synapse {
         this.tau_plus = 20;
         this.tau_minus = 20;
         this.A_plus = 0.01;
-        this.A_minus = -0.012; // Usually slightly stronger depression
+        this.A_minus = -0.012;
 
         // Visualization of Learning
         this.learningFlashColor = null; // color for spark
         this.learningFlashTimer = 0;
     }
-
     getReversalPotential() {
-        // Excitatory ~ 2.0 (pushes high), Inhibitory ~ -0.5 (clamps low)
-        return this.weight > 0 ? 2.0 : -0.5;
+        // Excitatory -> 1.0 (pushes high), Inhibitory -> -1.0 (clamps low)
+        return this.weight > 0 ? 1.0 : -1.0;
     }
 
     getControlPoint() {
-        // Check if there is a reverse connection
-        // Use ID based check for robustness
+        // Check if there is a reverse connection via ID
         let reverseConnected = synapses.find(s => s.from.id === this.to.id && s.to.id === this.from.id);
 
         if (!reverseConnected) return null;
@@ -978,7 +1005,7 @@ class Synapse {
         let ox = -dy / len;
         let oy = dx / len;
 
-        let offset = 80; // INCREASED for visibility
+        let offset = 80;
         let cp = { x: midX + ox * offset, y: midY + oy * offset };
 
         return cp;
@@ -994,7 +1021,7 @@ class Synapse {
 
         for (let i = 0; i < count; i++) {
             this.particles.push(new Particle(this.from.x, this.from.y, this.to, c));
-            // Stagger them slightly? 
+            // Stagger them slightly
             this.particles[this.particles.length - 1].progress = -Math.random() * 0.2; // Delay start
         }
     }
@@ -1005,6 +1032,7 @@ class Synapse {
             // Synapse acts as a scaler with weight.
             // Basic Input = Output * Weight
             let inputI = this.weight * this.from.currentOutput;
+            console.log(inputI)
             this.to.currentInput += inputI;
             return;
         }
@@ -1021,7 +1049,7 @@ class Synapse {
             p.update(this.from.x, this.from.y, this.to.x, this.to.y, cp);
 
             if (p.toRemove) {
-                // Arrived! Increase conductance.
+                // Increase conductance.
                 // Sensitivity scaling with weight magnitude
                 this.g += Math.abs(this.weight) * 0.5 * this.sensitivity;
                 this.particles.splice(i, 1);
@@ -1060,10 +1088,9 @@ class Synapse {
 
         // 2. Update Traces & Apply STDP
         if (this.plasticityMode === 'stdp') {
-            // Presynaptic Spike (arrived just now? or when neuron spiked?)
-            // Usually we use the neuron's spike flag.
+            // Presynaptic Spike
             // Note: In biological STDP, it's the arrival at synapse.
-            // But here, let's use the somatic spike time for simplicity (axonal delay is 0).
+            // Use the neuron's spike time (axonal delay is 0).
 
             if (this.from.didSpike) {
                 this.preTrace += 1.0;
@@ -1080,15 +1107,13 @@ class Synapse {
         } else if (this.plasticityMode === 'bcm') {
             // BCM Rule
             // dW = learningRate * pre * post * (post - theta)
-            // We need firing rates. 'preTrace' and 'postTrace' are actually good proxies for immediate activity traces.
-            // Or we can use the neuron's avgFiringRate, but that's too slow for correlation.
+            // 'preTrace' and 'postTrace' are good proxies for immediate activity traces.
             // BCM often uses a fast trace for activity and slow trace for threshold.
 
-            // Let's use traces as "instantaneous" activity rate approximation
+            // Use traces as "instantaneous" activity rate approximation
             if (this.from.didSpike) this.preTrace += 1.0;
             if (this.to.didSpike) this.postTrace += 1.0;
 
-            // Continuous update? Or just on spikes?
             // Continuous BCM: dW/dt = \eta * y * x * (y - \theta_M)
             // x = pre trace, y = post trace
 
@@ -1100,7 +1125,7 @@ class Synapse {
             let dt = 1.0;
             let dW = this.baseLearningRate * 0.001 * x * y * (y - theta);
 
-            // Only apply if activity is significant to save cycles/noise?
+            // Only apply if activity is significant to save cycles/noise
             if (x > 0.01 && y > 0.01) {
                 weightChange += dW;
             }
@@ -1108,16 +1133,20 @@ class Synapse {
 
         // Apply Change
         if (weightChange !== 0) {
+            let oldSign = Math.sign(this.weight) || 1; // Record original sign
             this.weight += weightChange;
-            // Clamp
-            this.weight = Math.max(-1, Math.min(1, this.weight));
+
+            // Prevent sign flipping
+            if (oldSign > 0) {
+                this.weight = Math.max(0, Math.min(1, this.weight));
+            } else {
+                this.weight = Math.max(-1, Math.min(0, this.weight));
+            }
 
             // Visualization
             if (Math.abs(weightChange) > 0.0001) { // Threshold for spark
                 this.learningFlashTimer = 10;
                 // Green for LTP (positive), Red for LTD (negative)
-                // Using standard RGB array format or string?
-                // Using p5 color objects might be safer in draw but let's store logic
                 this.learningFlashColor = weightChange > 0 ? [0, 255, 0] : [255, 0, 0];
             }
         }
@@ -1177,8 +1206,7 @@ class Synapse {
             // Tangent of Quadratic Bezier at t=0.5
             // T(t) = 2(1-t)(P1-P0) + 2t(P2-P1)
             // T(0.5) = (P1-P0) + (P2-P1) = P2 - P0
-            // This suggests the tangent at midpoint is parallel to the baseline.
-            // This is correct. The arrow should point parallel to the line between neurons.
+            // The arrow should point parallel to the line between neurons.
 
             // Position at t=0.5
             // B(0.5) = 0.25*P0 + 0.5*P1 + 0.25*P2
@@ -1189,7 +1217,6 @@ class Synapse {
             push();
             translate(mx, my);
             // Calculate angle: P2 - P0 (Vector from start to end)
-            // Even though curve goes out, at the peak it's parallel to the base.
             rotate(atan2(this.to.y - this.from.y, this.to.x - this.from.x));
             fill(finalC);
             stroke(255);
@@ -1232,7 +1259,7 @@ class Synapse {
             if (p.progress > 0) p.display();
         }
 
-        // Draw Receptor Glow at Target?
+        // Draw Receptor Glow at Target
         if (this.g > 0.1) {
             noStroke();
             fill(this.weight > 0 ? C_EXC : C_INH);
@@ -1276,13 +1303,30 @@ function mousePressed(e) {
     let sidebar = document.getElementById('properties-panel');
     let toolbar = document.querySelector('.toolbar');
 
-    // Simple bounding box check vs UI elements logic is handled by CSS pointer-events.
-    // But we need to make sure we don't spawn stuff under the UI if possible.
-    // For now, rely on pointer-events. If click passes to canvas:
-
     let w = screenToWorld(mouseX, mouseY);
     let mx = w.x;
     let my = w.y;
+
+    // Check Note
+    let clickedNote = null;
+    let clickedNoteBox = null;
+
+    // Check Note Box first (highest priority if visible)
+    for (let n of notes) {
+        if (n.isMouseOverBox(mx, my)) {
+            clickedNoteBox = n;
+            break;
+        }
+    }
+
+    if (!clickedNoteBox && !clickedNeuron && !clickedStimulator && !clickedButton && !clickedOutput && !clickedProbe) {
+        for (let n of notes) {
+            if (n.isMouseOver(mx, my)) {
+                clickedNote = n;
+                break;
+            }
+        }
+    }
 
     // 1. Check if clicking an existing neuron
     let clickedNeuron = null;
@@ -1332,27 +1376,6 @@ function mousePressed(e) {
         for (let p of probes) {
             if (p.isMouseOver(mx, my)) {
                 clickedProbe = p;
-                break;
-            }
-        }
-    }
-
-    // Check Note
-    let clickedNote = null;
-    let clickedNoteBox = null;
-
-    // Check Note Box first (highest priority if visible)
-    for (let n of notes) {
-        if (n.isMouseOverBox(mx, my)) {
-            clickedNoteBox = n;
-            break;
-        }
-    }
-
-    if (!clickedNoteBox && !clickedNeuron && !clickedStimulator && !clickedButton && !clickedOutput && !clickedProbe) {
-        for (let n of notes) {
-            if (n.isMouseOver(mx, my)) {
-                clickedNote = n;
                 break;
             }
         }
@@ -1419,6 +1442,7 @@ function mousePressed(e) {
             let b = new ManualButton(mx, my);
             buttons.push(b);
             selectElement(b);
+            b.isDragging = true;
             setMode('move');
         }
     } else if (mode === 'gate') {
@@ -1523,22 +1547,7 @@ function mouseDragged(e) {
             el.y += ddy;
         }
         multiDragStart = { x: mx, y: my };
-    } else if (mode === 'move' && selectedElement instanceof Neuron && selectedElement.isDragging) {
-        selectedElement.x = mx;
-        selectedElement.y = my;
-    } else if (mode === 'move' && selectedElement instanceof Stimulator && selectedElement.isDragging) {
-        selectedElement.x = mx;
-        selectedElement.y = my;
-    } else if (mode === 'move' && selectedElement instanceof OutputDisplay && selectedElement.isDragging) {
-        selectedElement.x = mx;
-        selectedElement.y = my;
-    } else if (mode === 'move' && selectedElement instanceof Note && selectedElement.isDragging) {
-        selectedElement.x = mx;
-        selectedElement.y = my;
-    } else if (mode === 'move' && selectedElement instanceof ManualButton && selectedElement.isDragging) {
-        selectedElement.x = mx;
-        selectedElement.y = my;
-    } else if (mode === 'move' && selectedElement instanceof OscilloscopeProbe && selectedElement.isDragging) {
+    } else if (mode === 'move' && selectedElement && selectedElement.isDragging) {
         selectedElement.x = mx;
         selectedElement.y = my;
     }
@@ -1590,22 +1599,7 @@ function mouseReleased() {
         selectionBox = null;
     }
 
-    if (mode === 'move' && selectedElement instanceof Neuron) {
-        selectedElement.isDragging = false;
-    }
-    if (mode === 'move' && selectedElement instanceof Stimulator) {
-        selectedElement.isDragging = false;
-    }
-    if (mode === 'move' && selectedElement instanceof OutputDisplay) {
-        selectedElement.isDragging = false;
-    }
-    if (mode === 'move' && selectedElement instanceof Note) {
-        selectedElement.isDragging = false;
-    }
-    if (mode === 'move' && selectedElement instanceof OscilloscopeProbe) {
-        selectedElement.isDragging = false;
-    }
-    if (mode === 'move' && selectedElement instanceof ManualButton) {
+    if (mode === 'move' && selectedElement && selectedElement.isDragging !== undefined) {
         selectedElement.isDragging = false;
     }
 
@@ -1833,7 +1827,6 @@ function stopEditingNote(e) {
 }
 
 // Setup Editor Events
-// Setup Editor Events
 window.addEventListener('load', () => {
     let editor = document.getElementById('note-editor');
     if (editor) {
@@ -2033,11 +2026,6 @@ function selectElement(el) {
         document.getElementById('val-btn-voltage').innerText = el.voltage.toFixed(2);
         document.getElementById('inp-btn-duration').value = el.pulseDuration;
         document.getElementById('val-btn-duration').innerText = el.pulseDuration;
-        document.getElementById('val-stim-freq').innerText = el.frequency.toFixed(2);
-        document.getElementById('inp-stim-offset').value = el.offset;
-        document.getElementById('val-stim-offset').innerText = el.offset.toFixed(2);
-        document.getElementById('inp-stim-phase').value = el.phase;
-        document.getElementById('val-stim-phase').innerText = el.phase.toFixed(2);
     } else if (el instanceof Synapse) {
         pSynapse.style.display = 'block';
         document.getElementById('inp-weight').value = el.weight;
@@ -2150,7 +2138,7 @@ window.deleteSelected = function () {
             synapses = synapses.filter(s => s.from !== el && s.to !== el);
             neurons = neurons.filter(n => n !== el);
             for (let note of notes) {
-                note.targets = note.targets.filter(t => t !== el);
+                note.targetIds = note.targetIds.filter(id => id !== el.id);
             }
         } else if (el instanceof Stimulator) {
             synapses = synapses.filter(s => s.from !== el);
@@ -2175,18 +2163,25 @@ window.deleteSelected = function () {
 
 window.updateOscilloscope = function () {
     let container = document.getElementById('oscilloscope');
-    container.innerHTML = ''; // lazy clear
+    container.innerHTML = '';
 
     if (selectedElement instanceof Neuron) {
-        // Simple SVG graph
         let h = 100;
         let w = container.clientWidth;
-        let data = selectedElement.history;
+        let data = selectedElement.history || [];
 
-        // create path
+        // Choose display range
+        const V_MIN = -2.0;
+        const V_MAX = 2.0;
+        const V_RANGE = V_MAX - V_MIN || 1;
+
         let pathPoints = data.map((v, i) => {
-            let x = (i / data.length) * w;
-            let y = h - (Math.min(v, 1.5) / 1.5) * h; // Scale 0-1.5 to height
+            let x = (i / Math.max(data.length - 1, 1)) * w;
+
+            // Clamp to range and map V_MIN -> bottom, V_MAX -> top
+            let vv = Math.max(V_MIN, Math.min(v, V_MAX));
+            let y = h - ((vv - V_MIN) / V_RANGE) * h;
+
             return `${x},${y}`;
         }).join(' ');
 
@@ -2227,6 +2222,9 @@ window.saveCircuit = function () {
         })),
         buttons: buttons.map(b => ({
             id: b.id, x: b.x, y: b.y, voltage: b.voltage, pulseDuration: b.pulseDuration
+        })),
+        notes: notes.map(n => ({
+            id: n.id, x: n.x, y: n.y, text: n.text, minimized: n.minimized, targetIds: n.targetIds
         }))
     };
     let blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -2250,7 +2248,7 @@ window.loadCircuit = function (input) {
             let idMap = {};
             for (let nd of data.neurons) {
                 let n = new Neuron(nd.x, nd.y);
-                n.id = nd.id; // Keep ID or map it? Keeping for load consistency
+                n.id = nd.id;
                 n.tau = nd.tau;
                 n.thresh = nd.thresh;
                 n.bias = nd.bias;
@@ -2322,6 +2320,17 @@ window.loadCircuit = function (input) {
                     }
                 }
             }
+
+            // Recreate Notes
+            if (data.notes) {
+                for (let nd of data.notes) {
+                    let n = new Note(nd.x, nd.y, nd.text || 'Note', []);
+                    n.id = nd.id;
+                    n.minimized = nd.minimized !== undefined ? nd.minimized : true;
+                    n.targetIds = nd.targetIds || [];
+                    notes.push(n);
+                }
+            }
         } catch (err) {
             alert("Error loading circuit: " + err);
         }
@@ -2336,41 +2345,20 @@ window.loadPreset = function (type) {
     let cy = windowHeight / 2;
 
     if (type === 'chain') {
-        let n1 = new Neuron(cx - 150, cy); n1.bias = 1.1; // pacemaker
+        let n1 = new Neuron(cx - 150, cy); n1.bias = -0.7; // pacemaker
         let n2 = new Neuron(cx, cy);
         let n3 = new Neuron(cx + 150, cy);
         neurons.push(n1, n2, n3);
         synapses.push(new Synapse(n1, n2), new Synapse(n2, n3));
     } else if (type === 'oscillator') {
-        let n1 = new Neuron(cx - 60, cy); n1.bias = 0.8;
-        let n2 = new Neuron(cx + 60, cy); n2.bias = 0.8;
+        let n1 = new Neuron(cx - 60, cy); n1.bias = -0.7;
+        let n2 = new Neuron(cx + 60, cy); n2.bias = -0.7;
         neurons.push(n1, n2);
         let s1 = new Synapse(n1, n2); s1.weight = 0.8;
         let s2 = new Synapse(n2, n1); s2.weight = 0.8;
         // Kickstart
         n1.voltage = 0.9;
         synapses.push(s1, s2);
-    } else if (type === 'attractor') {
-        // Recurrent Excitatory Circuit (6 neurons all-to-all)
-        let r = 120;
-        let count = 6;
-        for (let i = 0; i < count; i++) {
-            let angle = (TWO_PI / count) * i;
-            let n = new Neuron(cx + cos(angle) * r, cy + sin(angle) * r);
-            neurons.push(n);
-        }
-        // Connect all to all
-        for (let a of neurons) {
-            for (let b of neurons) {
-                if (a !== b) {
-                    let s = new Synapse(a, b);
-                    s.weight = 0.25; // Enough that 4 active inputs triggers spike
-                    s.decay = 0.05; // Slower decay for sustained activity
-                    synapses.push(s);
-                }
-            }
-        }
-        neurons[0].voltage = 0.9; // Seed activity
     } else if (type === 'balanced') {
         // Random network
         for (let i = 0; i < 8; i++) {
@@ -2387,88 +2375,6 @@ window.loadPreset = function (type) {
                 synapses.push(s);
             }
         }
-    } else if (type === 'retina') {
-        // === Scotopic Vision: Center-Surround Receptive Field ===
-        // Models a simplified rod pathway in the retina
-
-        // --- Layer 1: Photoreceptors (Rod Generators) ---
-        let rodL = new Stimulator(cx - 160, cy - 200);
-        rodL.type = 'constant'; rodL.amplitude = 1.0; rodL.offset = 0;
-        let rodC = new Stimulator(cx, cy - 200);
-        rodC.type = 'constant'; rodC.amplitude = 1.0; rodC.offset = 0;
-        let rodR = new Stimulator(cx + 160, cy - 200);
-        rodR.type = 'constant'; rodR.amplitude = 1.0; rodR.offset = 0;
-        stimulators.push(rodL, rodC, rodR);
-
-        // --- Layer 2: Horizontal Cell (Lateral Inhibition) ---
-        let horizontal = new Neuron(cx - 120, cy - 40);
-        horizontal.tau = 15; horizontal.bias = 0; horizontal.thresh = 0.8;
-
-        // --- Layer 3: Bipolar Cells ---
-        let onBipolar = new Neuron(cx + 40, cy - 40);
-        onBipolar.tau = 20; onBipolar.bias = 0; onBipolar.thresh = 0.8;
-
-        let offBipolar = new Neuron(cx - 120, cy + 100);
-        offBipolar.tau = 20; offBipolar.bias = 0; offBipolar.thresh = 0.8;
-
-        // --- Layer 4: Ganglion Cell (Output) ---
-        let ganglion = new Neuron(cx, cy + 220);
-        ganglion.tau = 20; ganglion.bias = 0; ganglion.thresh = 0.8;
-
-        neurons.push(horizontal, onBipolar, offBipolar, ganglion);
-
-        // --- Wiring ---
-        // Surround rods → Horizontal cell (excitatory)
-        let sRL_H = new Synapse(rodL, horizontal); sRL_H.weight = 0.8;
-        let sRR_H = new Synapse(rodR, horizontal); sRR_H.weight = 0.8;
-
-        // Center rod → ON-Bipolar (excitatory, direct center pathway)
-        let sRC_ON = new Synapse(rodC, onBipolar); sRC_ON.weight = 0.8;
-
-        // Horizontal → ON-Bipolar (inhibitory, surround suppression)
-        let sH_ON = new Synapse(horizontal, onBipolar); sH_ON.weight = -0.8;
-
-        // Horizontal → OFF-Bipolar (excitatory, surround drives OFF path)
-        let sH_OFF = new Synapse(horizontal, offBipolar); sH_OFF.weight = 0.6;
-
-        // ON-Bipolar → Ganglion (excitatory)
-        let sON_G = new Synapse(onBipolar, ganglion); sON_G.weight = 0.8;
-
-        // OFF-Bipolar → Ganglion (inhibitory, complementary)
-        let sOFF_G = new Synapse(offBipolar, ganglion); sOFF_G.weight = -0.6;
-
-        synapses.push(sRL_H, sRR_H, sRC_ON, sH_ON, sH_OFF, sON_G, sOFF_G);
-
-        // --- Notes ---
-        let noteRL = new Note(rodL.x, rodL.y - 40,
-            "ROD (Surround)\nPhotoreceptor responding to light in the surround region. In scotopic vision, rods detect dim light. They release glutamate in darkness.", []);
-        noteRL.minimized = true;
-
-        let noteRC = new Note(rodC.x, rodC.y - 40,
-            "ROD (Center)\nCenter photoreceptor. Toggle this generator's amplitude to simulate light hitting the center of the receptive field.", []);
-        noteRC.minimized = true;
-
-        let noteRR = new Note(rodR.x, rodR.y - 40,
-            "ROD (Surround)\nAnother surround photoreceptor. When both surround rods are active but center is off, the ganglion cell should be suppressed.", []);
-        noteRR.minimized = true;
-
-        let noteH = new Note(horizontal.x - 50, horizontal.y,
-            "HORIZONTAL CELL\nProvides lateral inhibition. Collects input from surround rods and inhibits the ON-bipolar cell, creating the antagonistic surround.", [horizontal]);
-        noteH.minimized = true;
-
-        let noteON = new Note(onBipolar.x + 60, onBipolar.y,
-            "ON-BIPOLAR CELL\nExcited when center rod is active. Inhibited by horizontal cell (surround). This creates the classic center-surround receptive field.", [onBipolar]);
-        noteON.minimized = true;
-
-        let noteOFF = new Note(offBipolar.x - 50, offBipolar.y + 40,
-            "OFF-BIPOLAR CELL\nExcited by horizontal cell activity (surround light). Responds when light is OFF in center but ON in surround — the inverse of the ON-bipolar.", [offBipolar]);
-        noteOFF.minimized = true;
-
-        let noteG = new Note(ganglion.x + 60, ganglion.y,
-            "RETINAL GANGLION CELL\nThe output neuron. Fires spikes sent to the brain. Strong firing for center light, suppressed by surround light.", [ganglion]);
-        noteG.minimized = true;
-
-        notes.push(noteRL, noteRC, noteRR, noteH, noteON, noteOFF, noteG);
     }
 }
 
