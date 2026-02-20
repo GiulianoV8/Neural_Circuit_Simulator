@@ -1307,27 +1307,6 @@ function mousePressed(e) {
     let mx = w.x;
     let my = w.y;
 
-    // Check Note
-    let clickedNote = null;
-    let clickedNoteBox = null;
-
-    // Check Note Box first (highest priority if visible)
-    for (let n of notes) {
-        if (n.isMouseOverBox(mx, my)) {
-            clickedNoteBox = n;
-            break;
-        }
-    }
-
-    if (!clickedNoteBox && !clickedNeuron && !clickedStimulator && !clickedButton && !clickedOutput && !clickedProbe) {
-        for (let n of notes) {
-            if (n.isMouseOver(mx, my)) {
-                clickedNote = n;
-                break;
-            }
-        }
-    }
-
     // 1. Check if clicking an existing neuron
     let clickedNeuron = null;
     for (let n of neurons) {
@@ -1376,6 +1355,27 @@ function mousePressed(e) {
         for (let p of probes) {
             if (p.isMouseOver(mx, my)) {
                 clickedProbe = p;
+                break;
+            }
+        }
+    }
+
+    // Check Note
+    let clickedNote = null;
+    let clickedNoteBox = null;
+
+    // Check Note Box first (highest priority if visible)
+    for (let n of notes) {
+        if (n.isMouseOverBox(mx, my)) {
+            clickedNoteBox = n;
+            break;
+        }
+    }
+
+    if (!clickedNoteBox && !clickedNeuron && !clickedStimulator && !clickedButton && !clickedOutput && !clickedProbe) {
+        for (let n of notes) {
+            if (n.isMouseOver(mx, my)) {
+                clickedNote = n;
                 break;
             }
         }
