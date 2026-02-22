@@ -1,0 +1,551 @@
+{
+    "neurons": [
+        {
+            "id": 1,
+            "x": 100,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 2,
+            "x": 160,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 3,
+            "x": 220,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 4,
+            "x": 280,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 5,
+            "x": 340,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 6,
+            "x": 100,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 7,
+            "x": 160,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 8,
+            "x": 220,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 9,
+            "x": 280,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 10,
+            "x": 340,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 11,
+            "x": 100,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 12,
+            "x": 160,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 13,
+            "x": 220,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 14,
+            "x": 280,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 15,
+            "x": 340,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 16,
+            "x": 100,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 17,
+            "x": 160,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 18,
+            "x": 220,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 19,
+            "x": 280,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 20,
+            "x": 340,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 101,
+            "x": 600,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 102,
+            "x": 660,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 103,
+            "x": 720,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 104,
+            "x": 780,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 105,
+            "x": 840,
+            "y": 100,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 106,
+            "x": 600,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 107,
+            "x": 660,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 108,
+            "x": 720,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 109,
+            "x": 780,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 110,
+            "x": 840,
+            "y": 160,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 111,
+            "x": 600,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 112,
+            "x": 660,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 113,
+            "x": 720,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 114,
+            "x": 780,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 115,
+            "x": 840,
+            "y": 220,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 116,
+            "x": 600,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 117,
+            "x": 660,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 118,
+            "x": 720,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 119,
+            "x": 780,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        },
+        {
+            "id": 120,
+            "x": 840,
+            "y": 280,
+            "tau": 3,
+            "thresh": -0.55,
+            "bias": -0.7,
+            "refractoryPeriod": 1
+        }
+    ],
+    "stimulators": [],
+    "outputs": [],
+    "buttons": [],
+    "probes": [],
+    "synapses": [
+        {
+            "fromId": 1,
+            "toId": 101,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 2,
+            "toId": 102,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 3,
+            "toId": 103,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 4,
+            "toId": 104,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 5,
+            "toId": 105,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 6,
+            "toId": 106,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 7,
+            "toId": 107,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 8,
+            "toId": 108,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 9,
+            "toId": 109,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 10,
+            "toId": 110,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 11,
+            "toId": 111,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 12,
+            "toId": 112,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 13,
+            "toId": 113,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 14,
+            "toId": 114,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 15,
+            "toId": 115,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 16,
+            "toId": 116,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 17,
+            "toId": 117,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 18,
+            "toId": 118,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 19,
+            "toId": 119,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        },
+        {
+            "fromId": 20,
+            "toId": 120,
+            "weight": 0.5,
+            "decay": 0.1,
+            "sensitivity": 1,
+            "plasticityMode": "bcm",
+            "baseLearningRate": 1
+        }
+    ],
+    "notes": []
+}

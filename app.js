@@ -19,6 +19,11 @@ let clipboard = null; // Serialized circuit fragment for copy/paste
 let isMultiDragging = false;
 let multiDragStart = null;
 
+let injectModeEnabled = false;      // toggled from toolbar UI
+let injectKeyHeld = false;          // true while Space is down
+let injectRadius = 80;              // pixels around mouse
+let injectStrength = 1.0;           // base current per neuron at center
+
 let simTime = 0;
 let simSpeed = 1;
 
@@ -54,7 +59,7 @@ function setup() {
     frameRate(60);
 
     // Initial Demo
-    loadPreset('oscillator');
+    loadPreset('chain');
 }
 
 function windowResized() {
@@ -83,19 +88,34 @@ function draw() {
         s.display();
     }
 
+    // Transformed mouse coordinates.
+    let mx = (mouseX - viewOffset.x) / zoomLevel;
+    let my = (mouseY - viewOffset.y) / zoomLevel;
+
     // Draw Drag Line for new connection
     if (mode === 'synapse' && tempConnectionStart) {
         stroke(255, 255, 255, 100);
         strokeWeight(2);
-        // Mouse coordinates need adjustment? No, waiting for pop() or adjusting here.
-        // Actually, we are inside push/pop, so we can use logical coordinates?
-        // Wait, line() draws in transformed space. mouseX/Y are screen space.
-        // We need transformed mouse coordinates.
-        let mx = (mouseX - viewOffset.x) / zoomLevel;
-        let my = (mouseY - viewOffset.y) / zoomLevel;
         line(tempConnectionStart.x, tempConnectionStart.y, mx, my);
     }
 
+    // Space-hover injection
+    if (mode === 'move' && injectModeEnabled && injectKeyHeld) {
+        for (let n of neurons) {
+            let dx = mx - n.x;
+            let dy = my - n.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < injectRadius) {
+                let distStrength = 1 - dist / injectRadius;  // 1 at center → 0 at edge
+                n.voltage += injectStrength * distStrength;
+            }
+        }
+        // Injection Glow
+        noFill();
+        stroke(56, 189, 248, 50);
+        strokeWeight(2);
+        circle(mx, my, injectRadius * 2);
+    }
     // Draw Neurons
     for (let n of neurons) {
         n.display();
@@ -220,17 +240,23 @@ function updateSimulation() {
         b.update();
     }
 
-    // 2. Propagate Synapses (instant for simplicity in this visualizer, or delayed)
-    // Here we verify spikes from PREVIOUS frame to add current to inputs
-    // 2. Update Synapses (Conductance decay & Particles)
+    // 2. Propagate Synapses FIRST (so currentInput is populated before neurons read it)
     for (let s of synapses) {
         if (s.from.didSpike) {
-            s.transmit();
+            // For neurons, only transmit on the first frame of the spike (refractory just started)
+            if (s.from instanceof Neuron) {
+                if (s.from.refractoryTimer === s.from.refractoryPeriod) {
+                    s.transmit();
+                }
+            } else {
+                // Stimulators and ManualButtons always transmit when outputting
+                s.transmit();
+            }
         }
-        s.update();
+        s.update(); // decay conductance, apply I_syn to target.currentInput
     }
 
-    // 3. Update Neurons
+    // 3. Update Neurons (now currentInput has synaptic current from step 2)
     for (let n of neurons) {
         n.update();
     }
@@ -839,7 +865,7 @@ class Neuron {
 
         // Physics Params
         this.voltage = 0; // Voltage
-        this.tau = 20; // Decay constant (ms)
+        this.tau = 3; // Decay constant (ms)
         this.thresh = -.55;
         this.bias = -0.7;
         this.refractoryPeriod = 1; // ms (frames) — biologically ~1ms
@@ -866,28 +892,31 @@ class Neuron {
         // LIF Math: dV = (I - V) / tau * dt
         // Assuming dt = 1 for per-frame update normalization
 
-        // Refractory period: block input and clamp voltage
+        let effectiveBias = this.bias;
+        if (this.spikeTimer > 0) {
+            // Temporary hyperpolarization
+            effectiveBias = this.bias - Math.abs(this.bias * 1.5);
+        }
+
+        // Leak integration (always)
+        let I = effectiveBias + this.currentInput;
+        let dV = (I - this.voltage) / this.tau;
+        this.voltage += dV;
+
+        // Refractory logic: block spikes, let voltage decay naturally via tau
         if (this.refractoryTimer > 0) {
             this.refractoryTimer--;
-            this.voltage = this.bias - .10;
-            this.didSpike = false;
         } else {
-            let I = this.bias + this.currentInput;
-
-            // Euler integration
-            let dV = (I - this.voltage) / this.tau;
-            this.voltage += dV;
-
-            // Spike Logic
+            // Spike check
             if (this.voltage >= this.thresh) {
-                this.voltage = .40; // Reset
                 this.didSpike = true;
-                this.spikeTimer = 10; // Frames to show flash
+                this.spikeTimer = this.tau;
                 this.refractoryTimer = this.refractoryPeriod;
             } else {
                 this.didSpike = false;
             }
         }
+
 
         // BCM: Update Average Firing Rate
         let instRate = this.didSpike ? 1.0 : 0.0;
@@ -901,7 +930,7 @@ class Neuron {
         if (this.spikeTimer > 0) this.spikeTimer--;
 
         // Record history
-        this.history.push(this.voltage + (this.didSpike ? 1.0 : 0)); // Add visual spike height
+        this.history.push(this.voltage);
         if (this.history.length > 100) this.history.shift();
     }
 
@@ -1032,7 +1061,6 @@ class Synapse {
             // Synapse acts as a scaler with weight.
             // Basic Input = Output * Weight
             let inputI = this.weight * this.from.currentOutput;
-            console.log(inputI)
             this.to.currentInput += inputI;
             return;
         }
@@ -1123,7 +1151,7 @@ class Synapse {
 
             // Scale down because this runs every frame
             let dt = 1.0;
-            let dW = this.baseLearningRate * 0.001 * x * y * (y - theta);
+            let dW = this.baseLearningRate * 0.0001 * x * y * (y - theta);
 
             // Only apply if activity is significant to save cycles/noise
             if (x > 0.01 && y > 0.01) {
@@ -1303,12 +1331,29 @@ function mousePressed(e) {
     let sidebar = document.getElementById('properties-panel');
     let toolbar = document.querySelector('.toolbar');
 
+    // Simple bounding box check vs UI elements logic is handled by CSS pointer-events.
+    // But we need to make sure we don't spawn stuff under the UI if possible.
+    // For now, rely on pointer-events. If click passes to canvas:
+
     let w = screenToWorld(mouseX, mouseY);
     let mx = w.x;
     let my = w.y;
 
-    // 1. Check if clicking an existing neuron
+    // Check Note
+    let clickedNote = null;
+    let clickedNoteBox = null;
     let clickedNeuron = null;
+
+    // Check Note Box first (highest priority if visible)
+    for (let n of notes) {
+        if (n.isMouseOverBox(mx, my)) {
+            clickedNoteBox = n;
+            break;
+        }
+    }
+
+    // 1. Check if clicking an existing neuron
+
     for (let n of neurons) {
         if (n.isMouseOver(mx, my)) {
             clickedNeuron = n;
@@ -1355,27 +1400,6 @@ function mousePressed(e) {
         for (let p of probes) {
             if (p.isMouseOver(mx, my)) {
                 clickedProbe = p;
-                break;
-            }
-        }
-    }
-
-    // Check Note
-    let clickedNote = null;
-    let clickedNoteBox = null;
-
-    // Check Note Box first (highest priority if visible)
-    for (let n of notes) {
-        if (n.isMouseOverBox(mx, my)) {
-            clickedNoteBox = n;
-            break;
-        }
-    }
-
-    if (!clickedNoteBox && !clickedNeuron && !clickedStimulator && !clickedButton && !clickedOutput && !clickedProbe) {
-        for (let n of notes) {
-            if (n.isMouseOver(mx, my)) {
-                clickedNote = n;
                 break;
             }
         }
@@ -1839,6 +1863,21 @@ window.addEventListener('load', () => {
         });
         editor.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent canvas click
     }
+
+    const injectToggle = document.getElementById('inject-toggle');
+    const injectStrengthSlider = document.getElementById('inject-strength');
+
+    if (injectToggle) {
+        injectToggle.addEventListener('change', (e) => {
+            injectModeEnabled = e.target.checked;
+        });
+    }
+
+    if (injectStrengthSlider) {
+        injectStrengthSlider.addEventListener('input', (e) => {
+            injectStrength = parseFloat(e.target.value);
+        });
+    }
 });
 
 
@@ -1863,7 +1902,18 @@ function keyPressed() {
     if (isMeta && key === 'v') {
         pasteSelection();
     }
+
+    if (key === 'a' || keyCode === 65) {
+        injectKeyHeld = true;
+    }
 }
+
+function keyReleased() {
+    if (key === 'a' || keyCode === 65) {
+        injectKeyHeld = false;
+    }
+}
+
 
 function copySelection() {
     let elements = multiSelection.length > 0 ? multiSelection : (selectedElement ? [selectedElement] : []);
@@ -2194,7 +2244,21 @@ window.updateOscilloscope = function () {
         polyline.setAttribute("points", pathPoints);
         polyline.setAttribute("class", "graph-line");
 
+        // Threshold Line
+        let vth = Math.max(V_MIN, Math.min(V_MAX, selectedElement.thresh));
+        let threshY = h - ((vth - V_MIN) / V_RANGE) * h;
+
+        let thresh = document.createElementNS(ns, 'line');
+        thresh.setAttribute('x1', 0);
+        thresh.setAttribute('y1', threshY);
+        thresh.setAttribute('x2', w);
+        thresh.setAttribute('y2', threshY);
+        thresh.setAttribute('stroke', 'rgba(62, 191, 255, 0.76)');
+        thresh.setAttribute('stroke-width', '1');
+        thresh.setAttribute('stroke-dasharray', '4,2');  // dashed
+
         svg.appendChild(polyline);
+        svg.appendChild(thresh);
         container.appendChild(svg);
     }
 }
