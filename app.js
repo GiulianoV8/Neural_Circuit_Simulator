@@ -2607,8 +2607,6 @@ function generateRandomNetwork(cx, cy, neuronCount, maxConn) {
         let nx = cx + Math.cos(angle) * radius;
         let ny = cy + Math.sin(angle) * radius;
         let n = new Neuron(nx, ny);
-        // Random bias: some slightly active, most resting
-        n.bias = -0.9 + random(0.4);
         neurons.push(n);
     }
 
