@@ -110,11 +110,15 @@ function draw() {
                 n.voltage += injectStrength * distStrength;
             }
         }
-        // Injection Glow
-        noFill();
-        stroke(56, 189, 248, 50);
-        strokeWeight(2);
-        circle(mx, my, injectRadius * 2);
+        // Injection Glow with Falloff Blur
+        noStroke();
+        for (let r = 0; r <= injectRadius; r += 4) {
+            // 1 at center, 0 at edge
+            let t = r / injectRadius;
+            let alpha = lerp(50, 0, t * t);
+            fill(56, 189, 248, alpha);
+            circle(mx, my, r * 2);
+        }
     }
     // Draw Neurons
     for (let n of neurons) {
@@ -898,10 +902,16 @@ class Neuron {
             effectiveBias = this.bias - Math.abs(this.bias * 1.5);
         }
 
+        if (this.refractoryTimer == this.refractoryPeriod) {
+            this.currentInput += 1; // Depolarization 
+        }
         // Leak integration (always)
         let I = effectiveBias + this.currentInput;
         let dV = (I - this.voltage) / this.tau;
         this.voltage += dV;
+
+        // Guard against NaN propagation (e.g. from cascading NaN inputs)
+        if (isNaN(this.voltage)) this.voltage = 0;
 
         // Refractory logic: block spikes, let voltage decay naturally via tau
         if (this.refractoryTimer > 0) {
@@ -922,7 +932,7 @@ class Neuron {
         let instRate = this.didSpike ? 1.0 : 0.0;
         let bcmTau = 1000; // Very slow integration (approx 16s at 60fps)
         this.avgFiringRate += (instRate - this.avgFiringRate) / bcmTau;
-        this.theta = this.avgFiringRate * this.avgFiringRate;
+        this.theta = this.avgFiringRate * this.avgFiringRate; // avg^2
         // prevent theta from stalling at 0
         if (this.theta < 0.000001) this.theta = 0.000001;
 
@@ -1003,8 +1013,8 @@ class Synapse {
         this.postTrace = 0;
         this.tau_plus = 20;
         this.tau_minus = 20;
-        this.A_plus = 0.01;
-        this.A_minus = -0.012;
+        this.A_plus = 1 * 10 ** -8;
+        this.A_minus = -1 * 10 ** -8;
 
         // Visualization of Learning
         this.learningFlashColor = null; // color for spark
@@ -1042,7 +1052,7 @@ class Synapse {
 
     transmit() {
         // Spawn Particles
-        let count = 5;
+        let count = 1;
         let c = this.weight > 0 ? color(...C_EXC) : color(...C_INH); // Neon Green or Red
 
         // Make them brighter for particles
@@ -1108,55 +1118,79 @@ class Synapse {
     }
 
     updatePlasticity() {
+        // Total weight change Δw_ij.
         let weightChange = 0;
 
-        // 1. Trace Decay
+        // Trace Decay
+        // preTrace ≈ x_j(t): presynaptic trace.
         this.preTrace *= Math.exp(-1 / this.tau_plus);
+
+        // postTrace ≈ y_i(t): postsynaptic trace.
         this.postTrace *= Math.exp(-1 / this.tau_minus);
 
-        // 2. Update Traces & Apply STDP
         if (this.plasticityMode === 'stdp') {
-            // Presynaptic Spike
-            // Note: In biological STDP, it's the arrival at synapse.
-            // Use the neuron's spike time (axonal delay is 0).
+            // Pair-based STDP (Liu et al., 2023)
+            // dw_ij/dt = -B_i(t) * y_i(t) δ(t - t_j^f) + B_j x_j(t) δ(t - t_i^f).
+            // ~ Change in weight = (-maxPostsynapticWeightChange * preTrace) + (maxPresynapticWeightChange * postTrace)
 
+            // Presynaptic Spike
             if (this.from.didSpike) {
+
+                // Trace increment at pre spike
                 this.preTrace += 1.0;
-                // Pre after Post -> LTD
-                weightChange += this.baseLearningRate * this.A_minus * this.postTrace;
+
+                // Presynaptic Spike after Postsynaptic Spike → LTD
+                // Δw_ij(pre) = -B_i * y_i(t)
+                // ~ Change in weight = baseLearningRate * (maxPresynapticWeightChange * preTrace)
+                weightChange += this.baseLearningRate * (this.A_minus * this.postTrace);
             }
 
+            // Postsynaptic Spike 
             if (this.to.didSpike) {
+
+                // Trace increment at post spike
                 this.postTrace += 1.0;
-                // Post after Pre -> LTP
-                weightChange += this.baseLearningRate * this.A_plus * this.preTrace;
+
+                // Post after Pre → LTP
+                // Δw_ij(post) = +B_j * x_j(t)
+                // ~ Change in weight = baseLearningRate * (maxPostsynapticWeightChange * postTrace)
+                weightChange += this.baseLearningRate * (this.A_plus * this.preTrace);
             }
 
         } else if (this.plasticityMode === 'bcm') {
-            // BCM Rule
+            // Bienenstock-Cooper-Munro (BCM) rule
             // dW = learningRate * pre * post * (post - theta)
-            // 'preTrace' and 'postTrace' are good proxies for immediate activity traces.
-            // BCM often uses a fast trace for activity and slow trace for threshold.
 
             // Use traces as "instantaneous" activity rate approximation
             if (this.from.didSpike) this.preTrace += 1.0;
             if (this.to.didSpike) this.postTrace += 1.0;
 
-            // Continuous BCM: dW/dt = \eta * y * x * (y - \theta_M)
-            // x = pre trace, y = post trace
+            weightChange += this.baseLearningRate * this.preTrace * this.postTrace * (this.postTrace - this.to.theta); // base learning rate scales down weight change
 
-            let y = this.postTrace;
-            let x = this.preTrace;
-            let theta = this.to.theta;
+        } else if (this.plasticityMode === 'stdp-bcm') {
+            // Pair-based STDP with BCM-modulated amplitudes
 
-            // Scale down because this runs every frame
-            let dt = 1.0;
-            let dW = this.baseLearningRate * 0.0001 * x * y * (y - theta);
+            let stdp_modulation = 0;
+            let bcm_modulation = 0;
 
-            // Only apply if activity is significant to save cycles/noise
-            if (x > 0.01 && y > 0.01) {
-                weightChange += dW;
+            // STDP Calculation
+            // Presynaptic Spike
+            if (this.from.didSpike) {
+                this.preTrace += 1.0;
+                stdp_modulation = Math.abs(this.A_minus * this.postTrace);
             }
+
+            // Postsynaptic Spike 
+            if (this.to.didSpike) {
+                this.postTrace += 1.0;
+                stdp_modulation = Math.abs(this.A_plus * this.preTrace);
+            }
+
+            // BCM Calculation
+            bcm_modulation = this.preTrace * this.postTrace * (this.postTrace - this.to.theta);
+
+            weightChange += this.baseLearningRate * (stdp_modulation * bcm_modulation);
+
         }
 
         // Apply Change
@@ -2098,11 +2132,13 @@ function selectElement(el) {
             // Plasticity Ui
             let pMode = el.plasticityMode || 'off';
             let pLr = el.baseLearningRate !== undefined ? el.baseLearningRate : 1.0;
+            // Convert baseLearningRate back to exponent for the slider
+            let lrExponent = pLr > 0 ? Math.log10(pLr) : 0;
 
             document.getElementById('inp-plasticity-mode').value = pMode;
             document.getElementById('plasticity-params').style.display = pMode === 'off' ? 'none' : 'block';
-            document.getElementById('inp-lr').value = pLr;
-            document.getElementById('val-lr').innerText = pLr.toFixed(1);
+            document.getElementById('inp-lr').value = lrExponent;
+            document.getElementById('val-lr').innerText = pLr.toExponential(1);
         }
     } else if (el instanceof OutputDisplay) {
         if (pOutput) pOutput.style.display = 'block';
@@ -2137,6 +2173,15 @@ window.updateSynapseParam = function (param, val) {
             let valEl = document.getElementById('val-' + (param === 'baseLearningRate' ? 'lr' : param));
             if (valEl) valEl.innerText = selectedElement[param].toFixed(decimals);
         }
+    }
+}
+
+window.updateLearningRate = function (exponentVal) {
+    if (selectedElement instanceof Synapse) {
+        let exponent = parseFloat(exponentVal);
+        selectedElement.baseLearningRate = Math.pow(10, exponent);
+        let valEl = document.getElementById('val-lr');
+        if (valEl) valEl.innerText = selectedElement.baseLearningRate.toExponential(1);
     }
 }
 
@@ -2227,6 +2272,9 @@ window.updateOscilloscope = function () {
 
         let pathPoints = data.map((v, i) => {
             let x = (i / Math.max(data.length - 1, 1)) * w;
+
+            // Guard against NaN values in voltage history
+            if (isNaN(v)) v = V_MIN;
 
             // Clamp to range and map V_MIN -> bottom, V_MAX -> top
             let vv = Math.max(V_MIN, Math.min(v, V_MAX));
@@ -2427,7 +2475,7 @@ window.loadPreset = function (type) {
         // Random network
         for (let i = 0; i < 8; i++) {
             let n = new Neuron(cx + random(-200, 200), cy + random(-200, 200));
-            n.bias = 0.9 + random(0.2); // some active
+            n.bias = -0.9 + random(0.2); // some active
             neurons.push(n);
         }
         for (let i = 0; i < 15; i++) {
@@ -2439,7 +2487,177 @@ window.loadPreset = function (type) {
                 synapses.push(s);
             }
         }
+    } else if (type === 'random') {
+        // Show configuration modal
+        showRandomNetworkModal(cx, cy);
+        return; // Don't do anything else — modal callback handles it
     }
+}
+
+// === RANDOM NETWORK MODAL ===
+function showRandomNetworkModal(cx, cy) {
+    // Remove any existing modal
+    let existing = document.getElementById('random-network-modal');
+    if (existing) existing.remove();
+
+    let overlay = document.createElement('div');
+    overlay.id = 'random-network-modal';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 10000; font-family: 'Inter', sans-serif;
+    `;
+
+    let modal = document.createElement('div');
+    modal.style.cssText = `
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px; padding: 32px; width: 360px;
+        box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 40px rgba(56,189,248,0.08);
+        color: #e2e8f0;
+    `;
+
+    modal.innerHTML = `
+        <h3 style="margin:0 0 6px 0; font-size:18px; font-weight:600; color:#f1f5f9;">
+            🔀 Random Network
+        </h3>
+        <p style="margin:0 0 20px 0; font-size:13px; color:#94a3b8;">
+            Generate a network of randomly connected neurons with random synaptic weights.
+        </p>
+
+        <label style="display:block; font-size:13px; color:#cbd5e1; margin-bottom:6px;">
+            Number of Neurons
+        </label>
+        <input type="number" id="rn-neuron-count" value="10" min="2" max="100" style="
+            width: 100%; padding: 8px 12px; border-radius: 8px;
+            border: 1px solid rgba(148,163,184,0.25); background: #0f172a;
+            color: #f1f5f9; font-size: 14px; font-family: 'JetBrains Mono', monospace;
+            outline: none; box-sizing: border-box; margin-bottom: 16px;
+        ">
+
+        <label style="display:block; font-size:13px; color:#cbd5e1; margin-bottom:6px;">
+            Max Connections per Neuron
+        </label>
+        <input type="number" id="rn-max-conn" value="3" min="1" max="50" style="
+            width: 100%; padding: 8px 12px; border-radius: 8px;
+            border: 1px solid rgba(148,163,184,0.25); background: #0f172a;
+            color: #f1f5f9; font-size: 14px; font-family: 'JetBrains Mono', monospace;
+            outline: none; box-sizing: border-box; margin-bottom: 24px;
+        ">
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button id="rn-cancel" style="
+                padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.2);
+                background: transparent; color: #94a3b8; font-size: 13px; cursor: pointer;
+                font-family: 'Inter', sans-serif;
+            ">Cancel</button>
+            <button id="rn-generate" style="
+                padding: 8px 22px; border-radius: 8px; border: none;
+                background: linear-gradient(135deg, #38bdf8, #818cf8);
+                color: #0f172a; font-size: 13px; font-weight: 600;
+                cursor: pointer; font-family: 'Inter', sans-serif;
+            ">Generate</button>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Close on overlay click (outside modal)
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    // Cancel button
+    document.getElementById('rn-cancel').addEventListener('click', () => overlay.remove());
+
+    // Generate button
+    document.getElementById('rn-generate').addEventListener('click', () => {
+        let neuronCount = parseInt(document.getElementById('rn-neuron-count').value) || 10;
+        let maxConn = parseInt(document.getElementById('rn-max-conn').value) || 3;
+
+        // Clamp values
+        neuronCount = Math.max(2, Math.min(100, neuronCount));
+        maxConn = Math.max(1, Math.min(neuronCount - 1, maxConn));
+
+        overlay.remove();
+        generateRandomNetwork(cx, cy, neuronCount, maxConn);
+    });
+
+    // Allow Enter key to generate
+    modal.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            document.getElementById('rn-generate').click();
+        }
+        e.stopPropagation(); // Prevent app shortcuts
+    });
+
+    // Focus the first input
+    setTimeout(() => document.getElementById('rn-neuron-count').focus(), 50);
+}
+
+function generateRandomNetwork(cx, cy, neuronCount, maxConn) {
+    resetSim();
+
+    // Arrange neurons in a circle
+    let radius = Math.max(100, neuronCount * 22); // Scale radius with count
+    for (let i = 0; i < neuronCount; i++) {
+        let angle = (i / neuronCount) * TWO_PI - HALF_PI; // Start from top
+        let nx = cx + Math.cos(angle) * radius;
+        let ny = cy + Math.sin(angle) * radius;
+        let n = new Neuron(nx, ny);
+        // Random bias: some slightly active, most resting
+        n.bias = -0.9 + random(0.4);
+        neurons.push(n);
+    }
+
+    // Track outgoing connection count per neuron
+    let outCount = new Array(neuronCount).fill(0);
+
+    // For each neuron, create random outgoing connections up to maxConn
+    for (let i = 0; i < neuronCount; i++) {
+        // Decide how many connections this neuron gets (1 to maxConn)
+        let numConn = Math.floor(random(1, maxConn + 1));
+
+        // Build list of possible targets (all neurons except self)
+        let targets = [];
+        for (let j = 0; j < neuronCount; j++) {
+            if (j !== i) targets.push(j);
+        }
+
+        // Shuffle targets and pick up to numConn
+        for (let k = targets.length - 1; k > 0; k--) {
+            let swap = Math.floor(random(k + 1));
+            [targets[k], targets[swap]] = [targets[swap], targets[k]];
+        }
+
+        let added = 0;
+        for (let t of targets) {
+            if (added >= numConn) break;
+            if (outCount[i] >= maxConn) break;
+
+            // Check for duplicate synapses
+            let duplicate = synapses.some(s => s.from === neurons[i] && s.to === neurons[t]);
+            if (duplicate) continue;
+
+            let s = new Synapse(neurons[i], neurons[t]);
+            s.plasticityMode = 'stdp-bcm';
+            // Random weight: excitatory (positive) or inhibitory (negative)
+            // ~70% excitatory, ~30% inhibitory for interesting dynamics
+            if (random() < 0.7) {
+                s.weight = random(0.3, 1.0);  // Excitatory
+            } else {
+                s.weight = random(-1.0, -0.3); // Inhibitory
+            }
+            synapses.push(s);
+            outCount[i]++;
+            added++;
+        }
+    }
+
+    // Give one random neuron a slight kick to start activity
+    neurons[Math.floor(random(neuronCount))].voltage = 0.9;
 }
 
 // Math Helper
