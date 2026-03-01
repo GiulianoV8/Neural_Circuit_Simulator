@@ -81,7 +81,7 @@
                 </div>
                 <div class="control-group">
                     <label for="inp-stim-amp">Amplitude <span class="value-display" id="val-stim-amp">1.0</span></label>
-                    <input type="range" min="0" max="5" step="0.1" id="inp-stim-amp"
+                    <input type="range" min="0" max="5" step="0.05" id="inp-stim-amp"
                         oninput="updateStimulatorParam('amplitude', this.value)">
                 </div>
                 <div class="control-group">
@@ -278,6 +278,16 @@
                     <input type="range" min="1" max="10" step="1" id="inp-speed" value="1"
                         oninput="simSpeed = parseInt(this.value)">
                 </div>
+                <div class="control-group">
+                    <label class="toolbar-item">
+                        <input type="checkbox" id="toggle-synapses" checked onchange="showSynapses = this.checked">
+                        Show Synapses
+                    </label>
+                    <label class="toolbar-item">
+                        <input type="checkbox" id="toggle-particles" checked onchange="showParticles = this.checked">
+                        Show Particles
+                    </label>
+                </div>
             </div>
         </div>
 
@@ -296,7 +306,8 @@
                     <a href="#" class="link-accent" onclick="loadPreset('chain')">Chain</a> |
                     <a href="#" class="link-accent" onclick="loadPreset('oscillator')">Oscillator</a> |
                     <a href="#" class="link-accent" onclick="loadPreset('balanced')">Balanced Net</a> |
-                    <a href="#" class="link-accent" onclick="loadPreset('random')">Random Network</a>
+                    <a href="#" class="link-accent" onclick="loadPreset('random')">Random Network</a> |
+                    <a href="#" class="link-accent" onclick="loadPreset('v1')">V1 Detectors</a>
                 </div>
             </div>
         </div>

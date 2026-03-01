@@ -26,6 +26,8 @@ let injectStrength = 1.0;           // base current per neuron at center
 
 let simTime = 0;
 let simSpeed = 1;
+let showSynapses = true;
+let showParticles = true;
 
 // Viewport
 let viewOffset = { x: 0, y: 0 };
@@ -84,8 +86,10 @@ function draw() {
     }
 
     // Draw Synapses
-    for (let s of synapses) {
-        s.display();
+    if (showSynapses) {
+        for (let s of synapses) {
+            s.display();
+        }
     }
 
     // Transformed mouse coordinates.
@@ -870,7 +874,7 @@ class Neuron {
         // Physics Params
         this.voltage = 0; // Voltage
         this.tau = 3; // Decay constant (ms)
-        this.thresh = -.55;
+        this.thresh = -.50;
         this.bias = -0.7;
         this.refractoryPeriod = 1; // ms (frames) — biologically ~1ms
         this.refractoryTimer = 0;
@@ -1317,8 +1321,10 @@ class Synapse {
         }
 
         // DRAW PARTICLES
-        for (let p of this.particles) {
-            if (p.progress > 0) p.display();
+        if (showParticles) {
+            for (let p of this.particles) {
+                if (p.progress > 0) p.display();
+            }
         }
 
         // Draw Receptor Glow at Target
@@ -1383,6 +1389,16 @@ function mousePressed(e) {
         if (n.isMouseOverBox(mx, my)) {
             clickedNoteBox = n;
             break;
+        }
+    }
+
+    // Check Note Icon
+    if (!clickedNoteBox) {
+        for (let n of notes) {
+            if (n.isMouseOver(mx, my)) {
+                clickedNote = n;
+                break;
+            }
         }
     }
 
@@ -2490,8 +2506,12 @@ window.loadPreset = function (type) {
     } else if (type === 'random') {
         // Show configuration modal
         showRandomNetworkModal(cx, cy);
-        return; // Don't do anything else — modal callback handles it
+        return;
+    } else if (type === 'v1') {
+        showV1Modal(cx, cy);
+        return;
     }
+
 }
 
 // === RANDOM NETWORK MODAL ===
@@ -2642,8 +2662,8 @@ function generateRandomNetwork(cx, cy, neuronCount, maxConn) {
             let s = new Synapse(neurons[i], neurons[t]);
             s.plasticityMode = 'stdp-bcm';
             // Random weight: excitatory (positive) or inhibitory (negative)
-            // ~70% excitatory, ~30% inhibitory for interesting dynamics
-            if (random() < 0.7) {
+            // ~65% excitatory, ~35% inhibitory (arbitrary)
+            if (random() < 0.65) {
                 s.weight = random(0.3, 1.0);  // Excitatory
             } else {
                 s.weight = random(-1.0, -0.3); // Inhibitory
@@ -2656,6 +2676,449 @@ function generateRandomNetwork(cx, cy, neuronCount, maxConn) {
 
     // Give one random neuron a slight kick to start activity
     neurons[Math.floor(random(neuronCount))].voltage = 0.9;
+
+    // Apply force-directed layout to arrange neurons by topology
+    forceDirectedLayout(cx, cy, neurons, synapses);
+}
+
+// === V1 FEATURE DETECTORS PRESET ===
+
+const V1_KERNELS = {
+    receptive: {
+        label: 'Receptive Field',
+        kernel: [
+            [0.4, 0.4, 0.4],
+            [0.4, 1.0, 0.4],
+            [0.4, 0.4, 0.4]
+        ]
+    },
+    vertical: {
+        label: 'Vertical Edge',
+        kernel: [
+            [-1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0]
+        ]
+    },
+    horizontal: {
+        label: 'Horizontal Edge',
+        kernel: [
+            [-1.0, -1.0, -1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, -1.0, -1.0]
+        ]
+    },
+    diagonalDown: {
+        label: 'Diagonal (↘)',
+        kernel: [
+            [1.0, -1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0]
+        ]
+    },
+    diagonalUp: {
+        label: 'Diagonal (↗)',
+        kernel: [
+            [-1.0, -1.0, 1.0],
+            [-1.0, 1.0, -1.0],
+            [1.0, -1.0, -1.0]
+        ]
+    },
+    centerSurround: {
+        label: 'Center-Surround',
+        kernel: [
+            [-0.6, -0.6, -0.6],
+            [-0.6, 1.0, -0.6],
+            [-0.6, -0.6, -0.6]
+        ]
+    }
+};
+
+function showV1Modal(cx, cy) {
+    let existing = document.getElementById('v1-modal');
+    if (existing) existing.remove();
+
+    let overlay = document.createElement('div');
+    overlay.id = 'v1-modal';
+    overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        z-index: 10000; font-family: 'Inter', sans-serif;
+    `;
+
+    // Build kernel options HTML
+    let optionsHtml = '';
+    for (let key in V1_KERNELS) {
+        optionsHtml += `<option value="${key}">${V1_KERNELS[key].label}</option>`;
+    }
+
+    let modal = document.createElement('div');
+    modal.style.cssText = `
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 16px; padding: 32px; width: 380px;
+        box-shadow: 0 25px 60px rgba(0,0,0,0.5), 0 0 40px rgba(56,189,248,0.08);
+        color: #e2e8f0;
+    `;
+
+    modal.innerHTML = `
+        <h3 style="margin:0 0 6px 0; font-size:18px; font-weight:600; color:#f1f5f9;">
+            🧠 V1 Feature Detectors
+        </h3>
+        <p style="margin:0 0 20px 0; font-size:13px; color:#94a3b8;">
+            Generate orientation-selective neurons modeled after primary visual cortex (V1) simple cells.
+        </p>
+
+        <label style="display:block; font-size:13px; color:#cbd5e1; margin-bottom:6px;">
+            Orientation Kernel
+        </label>
+        <select id="v1-kernel" style="
+            width: 100%; padding: 8px 12px; border-radius: 8px;
+            border: 1px solid rgba(148,163,184,0.25); background: #0f172a;
+            color: #f1f5f9; font-size: 14px; font-family: 'Inter', sans-serif;
+            outline: none; box-sizing: border-box; margin-bottom: 16px;
+        ">${optionsHtml}</select>
+
+        <div id="v1-kernel-preview" style="
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+            width: 120px; margin: 0 auto 20px auto;
+        "></div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button id="v1-cancel" style="
+                padding: 8px 18px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.2);
+                background: transparent; color: #94a3b8; font-size: 13px; cursor: pointer;
+                font-family: 'Inter', sans-serif;
+            ">Cancel</button>
+            <button id="v1-generate" style="
+                padding: 8px 22px; border-radius: 8px; border: none;
+                background: linear-gradient(135deg, #38bdf8, #818cf8);
+                color: #0f172a; font-size: 13px; font-weight: 600;
+                cursor: pointer; font-family: 'Inter', sans-serif;
+            ">Generate</button>
+        </div>
+    `;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Kernel preview update
+    function updatePreview() {
+        let sel = document.getElementById('v1-kernel').value;
+        let k = V1_KERNELS[sel].kernel;
+        let preview = document.getElementById('v1-kernel-preview');
+        preview.innerHTML = '';
+        for (let r = 0; r < 3; r++) {
+            for (let c = 0; c < 3; c++) {
+                let val = k[r][c];
+                let cell = document.createElement('div');
+                let bg, txt;
+                if (val > 0) {
+                    let intensity = Math.min(255, Math.round(val * 200));
+                    bg = `rgb(34, ${100 + intensity * 0.4}, 94)`;
+                    txt = '#fff';
+                } else {
+                    let intensity = Math.min(255, Math.round(Math.abs(val) * 200));
+                    bg = `rgb(${100 + intensity * 0.55}, 34, 34)`;
+                    txt = '#fff';
+                }
+                cell.style.cssText = `
+                    width: 36px; height: 36px; border-radius: 6px;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+                    background: ${bg}; color: ${txt};
+                `;
+                cell.textContent = val.toFixed(1);
+                preview.appendChild(cell);
+            }
+        }
+    }
+
+    document.getElementById('v1-kernel').addEventListener('change', updatePreview);
+    updatePreview();
+
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    document.getElementById('v1-cancel').addEventListener('click', () => overlay.remove());
+
+    document.getElementById('v1-generate').addEventListener('click', () => {
+        let kernelName = document.getElementById('v1-kernel').value;
+        overlay.remove();
+        generateV1FeatureDetectors(cx, cy, kernelName);
+    });
+
+    modal.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('v1-generate').click();
+        e.stopPropagation();
+    });
+}
+
+function generateV1FeatureDetectors(cx, cy, kernelName) {
+    resetSim();
+
+    let kernelDef = V1_KERNELS[kernelName];
+    let kernel = kernelDef.kernel;
+    let kSize = 3; // 3x3 kernel
+
+    let inputRows = 10, inputCols = 10;
+    let featRows = inputRows - kSize + 1; // 8
+    let featCols = inputCols - kSize + 1; // 8
+    let spacing = 55;
+    let gapBetweenGrids = 800;
+
+    // --- Create Input Grid (left) ---
+    let inputGrid = [];
+    let inputStartX = cx - gapBetweenGrids / 2 - (inputCols - 1) * spacing / 2;
+    let inputStartY = cy - (inputRows - 1) * spacing / 2;
+
+    for (let r = 0; r < inputRows; r++) {
+        inputGrid[r] = [];
+        for (let c = 0; c < inputCols; c++) {
+            let n = new Neuron(inputStartX + c * spacing, inputStartY + r * spacing);
+            inputGrid[r][c] = n;
+            neurons.push(n);
+        }
+    }
+
+    // --- Create Feature Map (right, 8×8) ---
+    let featGrid = [];
+    let featStartX = cx + gapBetweenGrids / 2 - (featCols - 1) * spacing / 2;
+    let featStartY = cy - (featRows - 1) * spacing / 2;
+
+    for (let r = 0; r < featRows; r++) {
+        featGrid[r] = [];
+        for (let c = 0; c < featCols; c++) {
+            let n = new Neuron(featStartX + c * spacing, featStartY + r * spacing);
+            // Lower threshold — fires when pattern matches
+            n.thresh = 0.3;
+            featGrid[r][c] = n;
+            neurons.push(n);
+        }
+    }
+
+    // --- Wire Connections using kernel ---
+    for (let fr = 0; fr < featRows; fr++) {
+        for (let fc = 0; fc < featCols; fc++) {
+            let featNeuron = featGrid[fr][fc];
+
+            // Connect to 3x3 patch of input neurons
+            for (let kr = 0; kr < kSize; kr++) {
+                for (let kc = 0; kc < kSize; kc++) {
+                    let ir = fr + kr;
+                    let ic = fc + kc;
+                    let weight = kernel[kr][kc];
+
+                    let s = new Synapse(inputGrid[ir][ic], featNeuron);
+                    s.weight = weight;
+                    synapses.push(s);
+                }
+            }
+        }
+    }
+
+    // --- Add Notes ---
+    let inputCenterX = inputStartX + (inputCols - 1) * spacing / 2;
+    let featCenterX = featStartX + (featCols - 1) * spacing / 2;
+    let noteY = cy - (inputRows - 1) * spacing / 2 - 60;
+
+    let inputNote = new Note(inputCenterX, noteY,
+        'Input Grid (10×10)\nRepresents photoreceptor layer', []);
+    inputNote.minimized = true;
+    notes.push(inputNote);
+
+    let featNote = new Note(featCenterX, noteY,
+        'V1 Feature Map (8×8)\n' + kernelDef.label + ' detector\n3×3 kernel convolution', []);
+    featNote.minimized = true;
+    notes.push(featNote);
+}
+
+// === RECEPTIVE FIELD PRESET ===
+function generateReceptiveField(cx, cy) {
+    resetSim();
+
+    let inputRows = 10, inputCols = 10;
+    // Extra border row/col on each side so edge neurons have falloff targets
+    let recRows = inputRows + 2, recCols = inputCols + 2;
+    let spacing = 55;
+    let gapBetweenGrids = 1000;
+
+    // Gaussian falloff parameters
+    let sigma = 1.5;
+    let projectionRadius = 3; // max grid distance for connections
+    let minWeight = 0.10;     // skip connections weaker than this
+
+    // --- Create Input Grid (left) ---
+    let inputGrid = []; // [row][col]
+    let inputStartX = cx - gapBetweenGrids / 2 - (inputCols - 1) * spacing / 2;
+    let inputStartY = cy - (inputRows - 1) * spacing / 2;
+
+    for (let r = 0; r < inputRows; r++) {
+        inputGrid[r] = [];
+        for (let c = 0; c < inputCols; c++) {
+            let n = new Neuron(inputStartX + c * spacing, inputStartY + r * spacing);
+            inputGrid[r][c] = n;
+            neurons.push(n);
+        }
+    }
+
+    // --- Create Receptive Grid (right, 12×12) ---
+    let recGrid = []; // [row][col]
+    let recStartX = cx + gapBetweenGrids / 2 - (recCols - 1) * spacing / 2;
+    let recStartY = cy - (recRows - 1) * spacing / 2;
+
+    for (let r = 0; r < recRows; r++) {
+        recGrid[r] = [];
+        for (let c = 0; c < recCols; c++) {
+            let n = new Neuron(recStartX + c * spacing, recStartY + r * spacing);
+            recGrid[r][c] = n;
+            neurons.push(n);
+        }
+    }
+
+    // --- Wire Connections ---
+    // Each input neuron (ir, ic) maps to receptive neuron (ir+1, ic+1)
+    // because the receptive grid has a 1-cell border offset
+    for (let ir = 0; ir < inputRows; ir++) {
+        for (let ic = 0; ic < inputCols; ic++) {
+            let inputNeuron = inputGrid[ir][ic];
+            // The corresponding center in the receptive grid (offset by 1)
+            let centerR = ir + 1;
+            let centerC = ic + 1;
+
+            // Connect to all receptive neurons within projection radius
+            for (let dr = -projectionRadius; dr <= projectionRadius; dr++) {
+                for (let dc = -projectionRadius; dc <= projectionRadius; dc++) {
+                    let tr = centerR + dr;
+                    let tc = centerC + dc;
+
+                    // Bounds check
+                    if (tr < 0 || tr >= recRows || tc < 0 || tc >= recCols) continue;
+
+                    let dist = Math.sqrt(dr * dr + dc * dc);
+
+                    // Calculate weight: 1.0 at center, Gaussian falloff
+                    let weight;
+                    if (dr === 0 && dc === 0) {
+                        weight = 1.0;
+                    } else {
+                        weight = Math.exp(-(dist * dist) / (2 * sigma * sigma));
+                    }
+
+                    if (weight < minWeight) continue;
+
+                    let s = new Synapse(inputNeuron, recGrid[tr][tc]);
+                    s.weight = parseFloat(weight.toFixed(3));
+                    synapses.push(s);
+                }
+            }
+        }
+    }
+
+    // --- Add Notes ---
+    let inputCenterX = inputStartX + (inputCols - 1) * spacing / 2;
+    let recCenterX = recStartX + (recCols - 1) * spacing / 2;
+    let noteY = cy - (inputRows - 1) * spacing / 2 - 60;
+
+    let inputNote = new Note(inputCenterX, noteY, 'Input Grid (10×10)\nEach neuron projects to its\ncorresponding receptive neuron\nand neighbors with Gaussian falloff', []);
+    inputNote.minimized = true;
+    notes.push(inputNote);
+
+    let recNote = new Note(recCenterX, noteY, 'Receptive Field (12×12)\nExtra border neurons capture\nedge falloff projections', []);
+    recNote.minimized = true;
+    notes.push(recNote);
+}
+
+// Fruchterman–Reingold force-directed layout
+function forceDirectedLayout(cx, cy, nodeList, edgeList) {
+    let n = nodeList.length;
+    if (n < 2) return;
+
+    // Layout area proportional to node count
+    let area = n * n * 100;
+    let k = Math.sqrt(area / n); // Ideal edge length
+
+    let iterations = 100;
+    let temperature = k * 2; // Initial max displacement
+    let coolingRate = temperature / iterations;
+
+    // Working arrays for displacement
+    let dx = new Array(n).fill(0);
+    let dy = new Array(n).fill(0);
+
+    // Pre-build node → index map for O(1) lookups
+    let nodeIndex = new Map();
+    for (let i = 0; i < n; i++) nodeIndex.set(nodeList[i], i);
+
+    for (let iter = 0; iter < iterations; iter++) {
+        // Reset displacements
+        dx.fill(0);
+        dy.fill(0);
+
+        // Repulsive forces between all pairs
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) {
+                let diffX = nodeList[i].x - nodeList[j].x;
+                let diffY = nodeList[i].y - nodeList[j].y;
+                let dist = Math.sqrt(diffX * diffX + diffY * diffY) || 0.01;
+
+                // Repulsive force: k² / dist
+                let force = (k * k) / dist;
+                let fx = (diffX / dist) * force;
+                let fy = (diffY / dist) * force;
+
+                dx[i] += fx;
+                dy[i] += fy;
+                dx[j] -= fx;
+                dy[j] -= fy;
+            }
+        }
+
+        // Attractive forces along edges
+        for (let edge of edgeList) {
+            let iFrom = nodeIndex.get(edge.from);
+            let iTo = nodeIndex.get(edge.to);
+            if (iFrom === undefined || iTo === undefined) continue;
+
+            let diffX = nodeList[iFrom].x - nodeList[iTo].x;
+            let diffY = nodeList[iFrom].y - nodeList[iTo].y;
+            let dist = Math.sqrt(diffX * diffX + diffY * diffY) || 0.01;
+
+            // Attractive force: dist² / k
+            let force = (dist * dist) / k;
+            let fx = (diffX / dist) * force;
+            let fy = (diffY / dist) * force;
+
+            dx[iFrom] -= fx;
+            dy[iFrom] -= fy;
+            dx[iTo] += fx;
+            dy[iTo] += fy;
+        }
+
+        // Apply displacement, clamped by temperature
+        for (let i = 0; i < n; i++) {
+            let disp = Math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]) || 0.01;
+            let scale = Math.min(disp, temperature) / disp;
+            nodeList[i].x += dx[i] * scale;
+            nodeList[i].y += dy[i] * scale;
+        }
+
+        // Cool down
+        temperature -= coolingRate;
+        if (temperature < 0.1) temperature = 0.1;
+    }
+
+    // Re-center around (cx, cy)
+    let avgX = 0, avgY = 0;
+    for (let node of nodeList) { avgX += node.x; avgY += node.y; }
+    avgX /= n;
+    avgY /= n;
+    for (let node of nodeList) {
+        node.x += cx - avgX;
+        node.y += cy - avgY;
+    }
 }
 
 // Math Helper
