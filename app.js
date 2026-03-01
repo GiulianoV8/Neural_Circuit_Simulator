@@ -26,6 +26,7 @@ let injectStrength = 1.0;           // base current per neuron at center
 
 let simTime = 0;
 let simSpeed = 1;
+let simAccumulator = 0;
 let showSynapses = true;
 let showParticles = true;
 
@@ -78,10 +79,12 @@ function draw() {
 
     drawGrid();
 
-    // Physics Update (Multiple steps for stability if speed > 1)
+    // Physics Update — accumulator allows fractional speeds (< 1x)
     if (isPlaying) {
-        for (let k = 0; k < simSpeed; k++) {
+        simAccumulator += simSpeed;
+        while (simAccumulator >= 1) {
             updateSimulation();
+            simAccumulator -= 1;
         }
     }
 
@@ -419,7 +422,7 @@ class ManualButton {
         this.voltage = 1.5; // Voltage to send on press
         this.currentOutput = 0;
         this.pressTimer = 0; // Frames remaining in pulse
-        this.pulseDuration = 10; // How many frames the pulse lasts
+        this.pulseDuration = 1; // How many frames the pulse lasts
         this.isDragging = false;
     }
 
@@ -873,7 +876,7 @@ class Neuron {
 
         // Physics Params
         this.voltage = 0; // Voltage
-        this.tau = 3; // Decay constant (ms)
+        this.tau = 1; // Decay constant (ms)
         this.thresh = -.50;
         this.bias = -0.7;
         this.refractoryPeriod = 1; // ms (frames) — biologically ~1ms
@@ -903,7 +906,8 @@ class Neuron {
         let effectiveBias = this.bias;
         if (this.spikeTimer > 0) {
             // Temporary hyperpolarization
-            effectiveBias = this.bias - Math.abs(this.bias * 1.5);
+            let hyperpolarization = this.bias == 0 ? 0.25 : Math.abs(this.bias * 3.5);
+            effectiveBias = this.bias - hyperpolarization;
         }
 
         if (this.refractoryTimer == this.refractoryPeriod) {
@@ -911,7 +915,7 @@ class Neuron {
         }
         // Leak integration (always)
         let I = effectiveBias + this.currentInput;
-        let dV = (I - this.voltage) / this.tau;
+        let dV = (I - this.voltage) / (this.tau == 1 ? 1.3 : this.tau);
         this.voltage += dV;
 
         // Guard against NaN propagation (e.g. from cascading NaN inputs)
@@ -924,7 +928,8 @@ class Neuron {
             // Spike check
             if (this.voltage >= this.thresh) {
                 this.didSpike = true;
-                this.spikeTimer = this.tau;
+                this.voltage += 1.0;
+                this.spikeTimer = this.tau + 1;
                 this.refractoryTimer = this.refractoryPeriod;
             } else {
                 this.didSpike = false;
@@ -959,19 +964,23 @@ class Neuron {
 
         // Body
         if (this.spikeTimer > 0) {
-            // Flash
+            // Decaying flash glow — starts large, shrinks over spikeTimer
+            let flashRatio = this.spikeTimer / (this.tau + 1); // 1.0 → 0.0
+            let glowSize = this.r * 2 * (1 + 0.6 * flashRatio); // Up to 1.6x neuron size
+            let alpha = flashRatio * 255;
+            noStroke();
+            fill(255, 255, 255, alpha);
+            circle(this.x, this.y, glowSize);
+            // Normal body on top
             fill(C_SPIKE);
             stroke(C_SPIKE);
         } else {
             // Resting Color (interpolate based on voltage)
-            let vNorm = constrain((2 + this.voltage) / (2 + this.thresh), 0, 1); // Adding 2 ensures proper calc even if both are negative
+            let vNorm = constrain((2 + this.voltage) / (2 + this.thresh), 0, 1);
             let c = color(30 + vNorm * 30, 41 + vNorm * 50, 59 + vNorm * 100);
             fill(c);
             stroke(C_NEURON_STROKE);
         }
-
-        strokeWeight(2);
-        circle(this.x, this.y, this.r * 2);
 
         strokeWeight(2);
         circle(this.x, this.y, this.r * 2);
@@ -1004,7 +1013,7 @@ class Synapse {
         // Neurotransmitter Model
         this.g = 0; // Conductance
         this.gMax = 1.0;
-        this.decay = 0.1; // Conductance decay per frame (Reuptake Rate)
+        this.decay = 0.15; // Conductance decay per frame (Reuptake Rate)
         this.sensitivity = 1.0; // Receptor Sensitivity
         this.particles = [];
 
@@ -1748,7 +1757,7 @@ function doubleClicked(e) {
 }
 
 // === LOGIC GATES ===
-let gateType = 'and'; // 'and', 'or', 'not'
+let gateType = 'and'; // 'and', 'or', 'subtract', 'not'
 
 window.setGateType = function (type) {
     gateType = type;
@@ -1759,11 +1768,12 @@ function spawnLogicGate(type, x, y) {
     let created = { neurons: [], synapses: [], notes: [] };
 
     if (type === 'and') {
-        // AND Gate: 2 inputs → 1 output, threshold 1.8 so both must fire
+        // AND Gate: 2 inputs → 1 output, both must fire
+        // Net input with both firing ≈ 1.3, one ≈ 0.3
         let inA = new Neuron(x - 80, y - 40);
         let inB = new Neuron(x - 80, y + 40);
         let out = new Neuron(x + 40, y);
-        out.thresh = 1.8;
+        out.thresh = 0.8;
         out.refractoryPeriod = 1;
 
         neurons.push(inA, inB, out);
@@ -1782,11 +1792,12 @@ function spawnLogicGate(type, x, y) {
         created = { neurons: [inA, inB, out], synapses: [sA, sB], notes: [note] };
 
     } else if (type === 'or') {
-        // OR Gate: 2 inputs → 1 output, threshold 0.8 so either fires it
+        // OR Gate: 2 inputs → 1 output, either input fires it
+        // Net input with one firing ≈ 0.3
         let inA = new Neuron(x - 80, y - 40);
         let inB = new Neuron(x - 80, y + 40);
         let out = new Neuron(x + 40, y);
-        out.thresh = 0.8;
+        out.thresh = -0.3;
         out.refractoryPeriod = 1;
 
         neurons.push(inA, inB, out);
@@ -1798,6 +1809,29 @@ function spawnLogicGate(type, x, y) {
         synapses.push(sA, sB);
 
         let note = new Note(x - 20, y - 70, 'OR Gate', [inA, inB, out]);
+        note.minimized = true;
+        notes.push(note);
+
+        created = { neurons: [inA, inB, out], synapses: [sA, sB], notes: [note] };
+
+    } else if (type === 'subtract') {
+        // SUB Gate: 2 inputs → 1 output, A excites (+1) and B inhibits (-1)
+        // A alone gives net ≈ 0.3, A+B cancels out
+        let inA = new Neuron(x - 80, y - 40);
+        let inB = new Neuron(x - 80, y + 40);
+        let out = new Neuron(x + 40, y);
+        out.thresh = -0.2;
+        out.refractoryPeriod = 1;
+
+        neurons.push(inA, inB, out);
+
+        let sA = new Synapse(inA, out);
+        sA.weight = 1.0;   // Excitatory from A
+        let sB = new Synapse(inB, out);
+        sB.weight = -1.0;  // Inhibitory from B
+        synapses.push(sA, sB);
+
+        let note = new Note(x - 20, y - 70, 'SUB Gate', [inA, inB, out]);
         note.minimized = true;
         notes.push(note);
 
@@ -2487,7 +2521,7 @@ window.loadPreset = function (type) {
         // Kickstart
         n1.voltage = 0.9;
         synapses.push(s1, s2);
-    } else if (type === 'balanced') {
+    } /*else if (type === 'balanced') {
         // Random network
         for (let i = 0; i < 8; i++) {
             let n = new Neuron(cx + random(-200, 200), cy + random(-200, 200));
@@ -2503,7 +2537,7 @@ window.loadPreset = function (type) {
                 synapses.push(s);
             }
         }
-    } else if (type === 'random') {
+    } */else if (type === 'random') {
         // Show configuration modal
         showRandomNetworkModal(cx, cy);
         return;
